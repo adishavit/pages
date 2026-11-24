@@ -36,6 +36,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 #heroNext{font-size:12px;color:var(--mut);margin-top:3px}
 #tabs{display:flex;border-bottom:1px solid var(--line);padding:0 8px}
 #tabs button{flex:1;background:none;border:0;padding:9px 4px;font-size:13px;color:var(--mut);border-bottom:2px solid transparent}
+#tabs button .gear{display:block;margin:-2px auto}
+#tabs button[data-t="set"]{flex:0 0 56px}
 #tabs button.sel{color:var(--acc);border-bottom-color:var(--acc);font-weight:600}
 #panes{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
 .pane{display:none;padding:8px 12px 24px}.pane.sel{display:block}
@@ -108,7 +110,7 @@ tr.past td{color:var(--mut)}
     <div id="heroNext"></div>
   </div>
   <div id="tabs">
-    <button data-t="buses" class="sel">Buses</button><button data-t="line">Line</button><button data-t="deps">Departures</button><button data-t="set">⚙︎</button>
+    <button data-t="buses" class="sel">Buses</button><button data-t="line">Line</button><button data-t="deps">Departures</button><button data-t="set" aria-label="Settings" title="Settings"><svg class="gear" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94 7.07 7.07 0 0 0-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.56-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0-.06.94c0 .32.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.5.38 1.04.7 1.63.94l.36 2.54c.05.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.59-.24 1.13-.56 1.63-.94l2.39.96c.22.08.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg></button>
   </div>
   <div id="panes">
     <div class="pane sel" id="p-buses"><div id="buses"></div></div>
@@ -132,8 +134,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v15";
-const BUILD="2026-11-24T18:44:26Z";
+const VERSION="v16";
+const BUILD="2026-11-24T18:47:15Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
