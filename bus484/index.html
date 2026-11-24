@@ -55,8 +55,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
-const VERSION = "v10";
-const BUILD = "2026-11-24T17:52:10Z";   // UTC time this file was built/pushed
+const VERSION = "v11";
+const BUILD = "2026-11-24T18:07:33Z";   // UTC time this file was built/pushed
 const PAGE_LOADED = Date.now();
 const LOG = [];
 function log(msg){
@@ -267,7 +267,7 @@ let newestMs = null;          // newest fix seen from any source (data time, not
 let strideNewestMs = null;    // newest Stride fix (Stride query cursor; Stride lags ~10 min)
 const rideStart = new Map();  // vehicle ref -> scheduled trip start (ms), from Stride
 // Live source: curlbus.app relays the Ministry's real-time SIRI feed. Override with ?relay=https://... (remembered).
-let LIVE_BASE = "https://curlbus.app";
+let LIVE_BASE = "https://shiny-shadow-cc40.adishavit.workers.dev";   // your Cloudflare relay to curlbus.app (CORS); ?relay= overrides
 try{ const q=new URLSearchParams(location.search).get("relay"); if(q){ localStorage.setItem("relay484",q); } const r=localStorage.getItem("relay484"); if(r) LIVE_BASE=r.replace(/\/$/,""); }catch(_){}
 let liveState="untried", liveRetryAt=0, liveOkMs=null;
 let inFlight=false, timer=null, lastRun=0, nextAt=0, okCount=0, failCount=0;
