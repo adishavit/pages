@@ -154,7 +154,7 @@ tr.past td{color:var(--mut)}
 </div>
 <div id="pick" class="set" hidden>
   <div class="hd"><b>Line &amp; direction</b><button id="pickX" class="chip icon" aria-label="Close">✕</button></div>
-  <form id="lineForm"><input id="lineIn" inputmode="numeric" placeholder="Line number, e.g. 480" aria-label="Line number"> <button class="btn">Find</button></form>
+  <form id="lineForm"><input id="lineIn" inputmode="numeric" placeholder="Line, e.g. 480" aria-label="Line number"> <button class="btn">Find</button></form>
   <div id="lineOpts"></div>
   <div id="recentWrap"><h3>Recent</h3><div id="recent"></div></div>
 </div>
@@ -198,8 +198,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v44";
-const BUILD="2026-11-24T20:39:31Z";
+const VERSION="v45";
+const BUILD="2026-11-24T20:41:42Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1044,8 +1044,9 @@ function rememberLine(){
   const l=recentLines().filter(r=>String(r.ref)!==String(REF)); l.unshift({line:LINE,ref:REF,from:title.from,to:title.to}); store(RECENT_KEY,JSON.stringify(l.slice(0,6)));
 }
 function renderRecent(){
-  const l=recentLines().filter(r=>String(r.ref)!==String(REF)); $("recentWrap").style.display=l.length?"":"none";
-  $("recent").innerHTML=l.map(r=>`<button class="opt" data-ref="${esc(r.ref)}" data-line="${esc(r.line)}"><b>${esc(r.line)}</b> <bdi>${esc(r.from)}</bdi> → <bdi>${esc(r.to)}</bdi></button>`).join("");
+  const shown=new Set((pickOpts||routeOpts).map(r=>String(r.line_ref)).concat(String(REF)));
+  const l=recentLines().filter(r=>!shown.has(String(r.ref))); $("recentWrap").style.display=l.length?"":"none";
+  $("recent").innerHTML=l.map(r=>`<button class="opt" data-ref="${esc(r.ref)}" data-line="${esc(r.line)}"><b>${esc(r.line)}</b> → <bdi><b>${esc(r.to)}</b></bdi> <span class="mut">from <bdi>${esc(r.from)}</bdi></span></button>`).join("");
 }
 let pickOpts=null;
 function renderLineOpts(){
