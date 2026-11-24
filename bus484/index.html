@@ -201,8 +201,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v46";
-const BUILD="2026-11-24T20:44:23Z";
+const VERSION="v47";
+const BUILD="2026-11-24T20:46:14Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1033,9 +1033,11 @@ function renderHero(model){
   $("heroTxt").innerHTML=`Next <b>${esc(title.num)}</b> at ${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}`;
   $("heroNext").innerHTML=p.slice(1,3).length?"Then: "+p.slice(1,3).map(x=>hm(x.t)).join(", "):"";
 }
+// route as one right-to-left Hebrew phrase: origin ← destination (destination emphasised, no English in between)
+function routeHtml(from,to){ return `<bdi dir="rtl">${from?`<span class="mut" style="font-weight:400">${esc(from)}</span> ← `:""}<b>${esc(to||"")}</b></bdi>`; }
 function dirPick(){const o=dirOptions(); return o.length?(o.find(r=>route&&r.route_alternative===route.route_alternative)||o[0]):null;}
 function renderTitle(){
-  const txt=title.to?`<span class="num">${esc(title.num)}</span>→ <bdi>${esc(title.to)}</bdi>${title.from?` <span class="mut" style="font-weight:400;font-size:12px">from <bdi>${esc(title.from)}</bdi></span>`:""}`
+  const txt=title.to?`<span class="num">${esc(title.num)}</span>${routeHtml(title.from,title.to)}`
                    :`<span class="num">${esc(title.num)}</span><bdi>${esc(title.from||"")}</bdi>`;
   const pk=dirPick();   // quick direction switch at the right end of the chip
   $("lineChip").innerHTML=`<span class="lt">${txt}</span>`+(pk?`<span id="swap" role="button" aria-label="Switch direction: to ${esc(prettyRoute(pk).to||"")}" title="Switch direction"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4"/></svg></span>`:"");
@@ -1052,13 +1054,13 @@ function rememberLine(){
 function renderRecent(){
   const shown=new Set((pickOpts||routeOpts).map(r=>String(r.line_ref)).concat(String(REF)));
   const l=recentLines().filter(r=>!shown.has(String(r.ref))); $("recentWrap").style.display=l.length?"":"none";
-  $("recent").innerHTML=l.map(r=>`<button class="opt" data-ref="${esc(r.ref)}" data-line="${esc(r.line)}"><b>${esc(r.line)}</b> → <bdi><b>${esc(r.to)}</b></bdi> <span class="mut">from <bdi>${esc(r.from)}</bdi></span></button>`).join("");
+  $("recent").innerHTML=l.map(r=>`<button class="opt" data-ref="${esc(r.ref)}" data-line="${esc(r.line)}"><b>${esc(r.line)}</b> ${routeHtml(r.from,r.to)}</button>`).join("");
 }
 let pickOpts=null;
 function renderLineOpts(){
   const el=$("lineOpts"), list=pickOpts||routeOpts; if(!list.length){el.innerHTML="";return;}
   el.innerHTML=list.map(r=>{const p=prettyRoute(r);return `<button class="opt${r.line_ref===REF?" cur":""}" data-ref="${r.line_ref}" data-line="${esc(r.route_short_name)}">
-    <b>${esc(r.route_short_name)}</b> → <bdi><b>${esc(p.to)}</b></bdi> <span class="mut">from <bdi>${esc(p.from)}</bdi></span>${r.line_ref===REF?' <span class="badge b-live">current</span>':""}<br><span class="mut" style="font-size:12px">${esc(r.agency_name)} · dir ${esc(r.route_direction)}${r.route_alternative&&r.route_alternative!=="0"?" alt "+esc(r.route_alternative):""}</span></button>`;}).join("");
+    <b>${esc(r.route_short_name)}</b> ${routeHtml(p.from,p.to)}${r.line_ref===REF?' <span class="badge b-live">current</span>':""}<br><span class="mut" style="font-size:12px">${esc(r.agency_name)} · dir ${esc(r.route_direction)}${r.route_alternative&&r.route_alternative!=="0"?" alt "+esc(r.route_alternative):""}</span></button>`;}).join("");
   renderTitle();
 }
 let lastModel=[];
