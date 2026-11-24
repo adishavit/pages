@@ -24,10 +24,25 @@ button{font:inherit;color:inherit;cursor:pointer}
 .icon.on{background:var(--acc);color:#fff}
 .leaflet-control-attribution{font-size:9px}
 /* bottom sheet */
-#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,190px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
+#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,240px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
 #sheet.drag{transition:none}
 #grab{padding:8px 0 2px;touch-action:none;cursor:grab}
 #grab i{display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto}
+#strip{position:relative;height:50px;margin:0 16px;touch-action:none}
+#stripIn{position:absolute;inset:0}
+.sl{position:absolute;top:26px;height:5px;border-radius:3px;margin-top:-2px}
+.sd{position:absolute;top:26px;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:var(--bg);border:2px solid var(--acc);cursor:pointer;z-index:2}
+.sd::after{content:"";position:absolute;inset:-10px}
+.sd.mine{width:14px;height:14px;margin:-7px 0 0 -7px;background:#ffcf33;border-color:#c60}
+.slab{position:absolute;font-size:10px;line-height:12px;white-space:nowrap;color:var(--mut);direction:rtl;unicode-bidi:isolate}
+.slab.end0{left:0;top:36px}.slab.end1{right:0;top:36px}
+.slab.mine{top:0;transform:translateX(-50%);color:var(--fg);font-weight:700;background:#ffcf33;color:#000;border-radius:4px;padding:0 4px}
+.sgap{position:absolute;top:34px;transform:translateX(-50%);font-size:9px;color:var(--mut);background:var(--bg);padding:0 3px}
+.sfix{position:absolute;top:26px;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--str);z-index:3}
+.sfix.live{background:var(--live)}.sfix.old{background:var(--old)}
+.sbus{position:absolute;top:12px;transform:translateX(-50%);background:var(--str);color:#fff;border-radius:8px;padding:0 5px;font:700 10px/13px system-ui,sans-serif;white-space:nowrap;z-index:4;transition:left 1s linear;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.sbus small{font-weight:400;margin-left:3px}
+.sbus.live{background:var(--live)}.sbus.old{background:var(--old)}
 #hero{padding:4px 16px 8px;touch-action:none}
 #heroTop{font-size:12px;color:var(--mut);display:flex;justify-content:space-between;gap:8px}
 #heroMain{display:flex;align-items:baseline;gap:10px;margin-top:2px}
@@ -90,7 +105,7 @@ tr.past td{color:var(--mut)}
 .medot{width:16px;height:16px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 4px #000}
 /* banners & toast */
 #upd{display:none;position:absolute;z-index:1002;top:calc(56px + env(safe-area-inset-top));left:8px;right:8px;background:#fff3cd;color:#000;border:1px solid #c90;border-radius:10px;padding:8px 10px;font-size:13px}
-#toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,190px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,240px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 #toast.on{opacity:.95}
 </style>
 </head>
@@ -106,6 +121,7 @@ tr.past td{color:var(--mut)}
 <div id="toast"></div>
 <div id="sheet">
   <div id="grab"><i></i></div>
+  <div id="strip"><div id="stripIn"></div></div>
   <div id="hero">
     <div id="heroTop"><span id="heroStop">My stop: tap a station</span><span id="heroAge"></span></div>
     <div id="heroMain"><div id="heroMin">–</div><div id="heroTxt" class="mut">Loading…</div></div>
@@ -145,8 +161,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v21";
-const BUILD="2026-11-24T19:34:26Z";
+const VERSION="v22";
+const BUILD="2026-11-24T19:38:55Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -882,15 +898,73 @@ function renderLineOpts(){
 let lastModel=[];
 function render(){
   const model=buildModel(); lastModel=model;
-  renderMap(model); renderCards(model); renderDiagram(model); renderDeps(model); renderHero(model); renderTitle(); renderTraffic(); renderAccuracy();
+  renderMap(model); renderCards(model); renderDiagram(model); renderDeps(model); renderHero(model); renderTitle(); renderTraffic(); renderAccuracy(); renderStrip(model);
   $("probeInfo").textContent=(probeInfo||"not run yet")+(probeAt?` · last run ${hm(probeAt)}`:"");
   const st=$("status"), lag=newestMs?Math.round((Date.now()-newestMs)/60000):null;
   const lv=liveState==="ok"?"live ✅":liveState==="untried"?"live …":`live ❌ ${liveState}`;
   st.className=(liveState!=="ok"&&liveState!=="untried")?"err":"";
-  if(refreshErr){st.className="err";st.textContent=`Could not load data: ${refreshErr} · retrying in 60 s`;$("heroAge").textContent="";return;}
+  if(refreshErr){st.className="err";st.textContent=`Could not load data: ${refreshErr} · retrying in 60 s`;$("heroAge").textContent=VERSION;return;}
   st.innerHTML=`${model.length} bus${model.length===1?"":"es"} · newest fix ${newestMs?hm(newestMs)+` (${lag} min ago)`:"–"} · ${lv}${liveLastErr?` <span>[${esc(liveLastErr)}]</span>`:""}`;
-  $("heroAge").textContent=lastRun?`updated ${hm(lastRun)}`:"";
+  $("heroAge").textContent=`${VERSION}${lastRun?` · updated ${hm(lastRun)}`:""}`;
 }
+
+// ---------- subway-style strip: one line, stations spaced by sqrt(planned minutes) ----------
+// Square root keeps long highway gaps visibly long (~4x a city gap instead of ~19x); inside a gap, position is linear.
+let stripX0=null;   // per station: left position in %
+function stripLayout(){
+  if(stops.length<2){stripX0=null;return;}
+  const w=[];
+  for(let i=0;i<stops.length-1;i++){
+    const dt=stops[i+1].off-stops[i].off, da=stops[i+1].along-stops[i].along;
+    w.push(Number.isFinite(dt)&&dt>0?Math.sqrt(Math.max(30,dt)):0.6+Math.log1p(Math.max(0,da)/300));
+  }
+  const tot=w.reduce((a,b)=>a+b,0), M=3; let x=M; stripX0=[x];
+  for(const v of w){x+=v/tot*(100-2*M); stripX0.push(x);}
+}
+function stripX(a){
+  if(!stripX0) return 0;
+  if(a<=stops[0].along) return stripX0[0];
+  for(let i=0;i<stops.length-1;i++){const A=stops[i].along,B=stops[i+1].along;
+    if(a<=B){const f=B>A?(a-A)/(B-A):0; return stripX0[i]+f*(stripX0[i+1]-stripX0[i]);}}
+  return stripX0[stripX0.length-1];
+}
+const shortName=n=>String(n).split("/")[0].replace(/^ת\. ?רכבת /,"").replace(/^ת\.רק''ל /,"").trim();
+function busNowAlong(b){ const age=Math.max(0,(Date.now()-tms(b.r))/1000);
+  return b.stale?b.along:(haveTraffic()?advance(b.along,age):Math.min(routeLen(),b.along+b.sp*age)); }
+function renderStrip(model){
+  const el=$("stripIn"); if(!el) return;
+  stripLayout(); if(!stripX0){el.innerHTML="";return;}
+  let h="";
+  // line, coloured by traffic where measured
+  for(let i=0;i<stops.length-1;i++){
+    const A=stops[i].along,B=stops[i+1].along; let pieces=[];
+    if(prof&&B>A){ let cur=null;
+      for(let k=Math.floor(A/prof.C);k<prof.n&&k*prof.C<B;k++){const lv=cellLevel(k), a0=Math.max(A,k*prof.C), a1=Math.min(B,(k+1)*prof.C);
+        if(cur&&cur.lv===lv) cur.a1=a1; else { if(cur) pieces.push(cur); cur={lv,a0,a1}; } }
+      if(cur) pieces.push(cur); }
+    if(!pieces.length) pieces=[{lv:null,a0:A,a1:B}];
+    for(const p of pieces){const x0=stripX(p.a0),x1=stripX(p.a1);
+      h+=`<i class="sl" style="left:${x0}%;width:${Math.max(.3,x1-x0)}%;background:${p.lv==null?"var(--acc)":LEVEL_COLOR[p.lv]};opacity:${p.lv==null?.45:1}"></i>`;}
+    const gapMin=(stops[i+1].off-stops[i].off)/60;
+    if(gapMin>=10&&stripX0[i+1]-stripX0[i]>14) h+=`<span class="sgap" style="left:${(stripX0[i]+stripX0[i+1])/2}%">~${Math.round(gapMin)} min</span>`;
+  }
+  // stations
+  stops.forEach((s,i)=>{const mine=s.code===MY_STOP;
+    h+=`<b class="sd${mine?" mine":""}" data-code="${esc(s.code)}" style="left:${stripX0[i]}%" title="${esc(s.name)}"></b>`;});
+  const first=stops[0], last=stops[stops.length-1], my=myStop();
+  h+=`<span class="slab end0">${esc(shortName(first.name))}</span><span class="slab end1">${esc(shortName(last.name))}</span>`;
+  if(my) h+=`<span class="slab mine" style="left:${stripX(my.along)}%">${esc(shortName(my.name))}</span>`;
+  // buses: last fix (small dot) and position now (pill)
+  for(const b of model){
+    const cls=b.stale?"old":b.live?"live":"";
+    h+=`<i class="sfix ${cls}" style="left:${stripX(b.along)}%"></i>`;
+    h+=`<span class="sbus ${cls}" id="sb-${esc(b.ref)}" style="left:${stripX(busNowAlong(b))}%">${esc(title.num)}${b.start!=null?`<small>${hm(b.start)}</small>`:""}</span>`;
+  }
+  el.innerHTML=h;
+}
+function tickStrip(){ if(document.hidden||!stripX0) return;
+  for(const b of lastModel){const e=document.getElementById("sb-"+b.ref); if(e) e.style.left=stripX(busNowAlong(b))+"%";} }
+setInterval(tickStrip,1000);
 
 // ---------- refresh loop ----------
 // Poll every minute only when it matters: a live bus is moving, or the next bus at my stop is due within 20 min.
@@ -942,7 +1016,7 @@ setInterval(checkVersion,5*60000);
 setInterval(()=>{ if(!document.hidden&&sections.length&&Date.now()-probeAt>PROBE_MS) fetchProbes(); },20000);
 
 // ---------- UI: sheet, tabs, buttons ----------
-const SNAP=()=>[190,Math.round(innerHeight*.5),Math.round(innerHeight*.88)];
+const SNAP=()=>[240,Math.round(innerHeight*.5),Math.round(innerHeight*.88)];
 let sheetIdx=0;
 function setSheet(i){sheetIdx=Math.max(0,Math.min(2,i));const h=SNAP()[sheetIdx];document.documentElement.style.setProperty("--h",h+"px");
   if(sheetIdx===2&&$("p-set").classList.contains("sel")) $("dbg").textContent=LOG.join("\n");}
@@ -960,6 +1034,7 @@ $("tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)
   for(const p of document.querySelectorAll(".pane"))p.classList.toggle("sel",p.id==="p-"+b.dataset.t);
   if(sheetIdx===0)setSheet(1); if(b.dataset.t==="set")$("dbg").textContent=LOG.join("\n");});
 $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r)setMyStop(r.dataset.code);});
+$("strip").addEventListener("click",e=>{const d=e.target.closest(".sd");if(d)setMyStop(d.dataset.code);});
 $("lineChip").addEventListener("click",()=>{$("tabs").querySelector('[data-t="set"]').click();setSheet(Math.max(sheetIdx,1));});
 $("btnFit").addEventListener("click",fitRoute);
 (function(){const sel=$("mapStyle"); sel.innerHTML=Object.entries(STYLES).map(([k,v])=>`<option value="${k}">${esc(v.name)}${v.carto&&!CARTO_KEY?" — needs key":""}</option>`).join(""); sel.value=MAP_STYLE;
