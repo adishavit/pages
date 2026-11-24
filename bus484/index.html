@@ -176,8 +176,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v40";
-const BUILD="2026-11-24T20:21:16Z";
+const VERSION="v41";
+const BUILD="2026-11-24T20:23:48Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -384,6 +384,26 @@ async function loadRoad(){
     road=d.routes[0].geometry.coordinates.map(([x,y])=>[y,x]); store(key,JSON.stringify(road));
     log(`road: ${road.length} pts, ${(d.routes[0].distance/1000).toFixed(1)} km`); drawStops(); render();
   }catch(e){log("road failed, straight lines: "+e.message);}
+}
+
+// ---------- next service day (when today's buses are done) ----------
+let tomorrow=null;   // {first: ms of first departure, rides:[ms...]} or {none:true}
+async function loadTomorrow(){
+  if(tomorrow||!REF) return; tomorrow={loading:true};
+  const d=new Date(Date.now()+86400000).toLocaleDateString("sv",{timeZone:TZ});
+  try{
+    const rt=await getJSON("routes-tomorrow",`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${d}&date_to=${d}&limit=50`);
+    const r=rt.find(x=>x.line_ref===REF); if(!r){tomorrow={none:true};render();return;}
+    const rs=(await getJSON("rides-tomorrow",`${API}/gtfs_rides/list?gtfs_route_id=${r.id}&limit=200`)).map(x=>Date.parse(x.start_time)).filter(Number.isFinite).sort((a,b)=>a-b);
+    tomorrow=rs.length?{first:rs[0],rides:rs}:{none:true};
+  }catch(e){ log("tomorrow lookup failed: "+e.message); tomorrow=null; }
+  render();
+}
+function nextServiceText(){
+  if(!tomorrow||tomorrow.loading) { loadTomorrow(); return ""; }
+  if(tomorrow.none) return "";
+  const s=myStop(), t=tomorrow.first+(s&&Number.isFinite(s.off)?s.off*1000:0);
+  return `First bus tomorrow${s?" at your stop":""}: <b>${hm(t)}</b>`;
 }
 
 // ---------- my stop ----------
@@ -781,7 +801,10 @@ function buildModel(){
   const now=Date.now(), out=[];
   for(const[ref,m]of vehicles){
     const fx=[...m.values()].sort((a,b)=>tms(a)-tms(b)), r=fx[fx.length-1];
-    const behind=((r.live?newestMs:(strideNewestMs??newestMs))-tms(r))/60000, stale=behind>STALE_MIN;
+    const behind=((r.live?newestMs:(strideNewestMs??newestMs))-tms(r))/60000;
+    const silentMin=(now-tms(r))/60000, snEnd=routePts.length>1?snap(r.lat,r.lon).along:0;
+    if(snEnd>=routeLen()-300&&silentMin>3) continue;                 // reached the terminus: trip finished
+    const stale=behind>STALE_MIN||silentMin>15;
     const sn=routePts.length>1?snap(r.lat,r.lon):{along:0,d:0};
     // recent speed along the route
     let sp=0; const old=fx.find(f=>tms(r)-tms(f)<=10*60000);
@@ -886,7 +909,8 @@ function renderMap(model){
 }
 function renderCards(model){
   const el=$("buses"); if(!stops.length){el.innerHTML="";return;}
-  if(!model.length&&!liveEta.size){el.innerHTML=`<div class="card mut">No ${esc(title.num)} buses reporting right now. See <b>Departures</b> for the timetable.</div>`;return;}
+  if(!model.length&&!liveEta.size){ const nx=myStop()?myStopPredictions(model)[0]:null, ns=nx?"":nextServiceText();
+    el.innerHTML=`<div class="card">No ${esc(title.num)} buses on the road right now.${nx?`<br>Next one at your stop: <b>${hm(nx.t)}</b>${nx.src==="tt"?" (scheduled)":""}`:ns?`<br>${ns}`:""}</div>`; return; }
   let h="";
   for(const b of model){
     const at=stopAtAlong(b.along), nx=nextStopAfter(b.along);
@@ -942,7 +966,9 @@ function renderHero(model){
   $("heroStop").innerHTML=s?`My stop: <span class="rtl"><b>${esc(s.name)}</b></span>`:"Tap a station to choose your stop";
   if(!s){$("heroMin").textContent="–";$("heroTxt").textContent="";$("heroNext").textContent="";return;}
   const p=myStopPredictions(model);
-  if(!p.length){$("heroMin").textContent="–";$("heroTxt").innerHTML=(refreshErr||!rides.length)&&!lastModel.length?`Loading…`:`No more ${esc(title.num)} buses today.`;$("heroNext").textContent="";return;}
+  if(!p.length){ const loading=(refreshErr||!rides.length)&&!lastModel.length;
+    $("heroMin").textContent="–"; $("heroTxt").innerHTML=loading?`Loading…`:`No more ${esc(title.num)} buses today.`;
+    $("heroNext").innerHTML=loading?"":nextServiceText(); return; }
   const m=Math.max(0,Math.round((p[0].t-Date.now())/60000));
   $("heroMin").textContent=m===0?"now":m+" min";
   $("heroTxt").innerHTML=`Next <b>${esc(title.num)}</b> at ${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}`;
@@ -969,7 +995,9 @@ function render(){
   st.className=(liveState!=="ok"&&liveState!=="ok-warn"&&liveState!=="untried")?"err":"";
   if(!okCount&&!refreshErr&&!model.length){st.className="";st.textContent="Waiting for bus data…";$("heroAge").textContent=VERSION;return;}
   else if(refreshErr){st.className="err";st.textContent=`Can't reach the bus data right now · retrying`;$("heroAge").textContent=VERSION;return;}
-  st.innerHTML=`${model.length} bus${model.length===1?"":"es"} on the road${newestMs?` · positions from ${hm(newestMs)}`:""}${lv?` · ${lv}`:""}`;   // details in ⚙︎ debug log
+  const active=model.filter(b=>!b.stale);
+  st.innerHTML=active.length?`${active.length} bus${active.length===1?"":"es"} on the road · positions from ${hm(Math.max(...active.map(b=>tms(b.r))))}${lv?` · ${lv}`:""}`
+                            :`No ${esc(title.num)} buses on the road right now`;   // details in ⚙︎ debug log
   $("heroAge").textContent=`${VERSION}${lastRun?` · updated ${hm(lastRun)}`:""}`;
 }
 
