@@ -55,8 +55,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
-const VERSION = "v11";
-const BUILD = "2026-11-24T18:07:33Z";   // UTC time this file was built/pushed
+const VERSION = "v12";
+const BUILD = "2026-11-24T18:21:04Z";   // UTC time this file was built/pushed
 const PAGE_LOADED = Date.now();
 const LOG = [];
 function log(msg){
@@ -293,7 +293,8 @@ async function fetchPositions(){
 // A SIRI stop query returns buses heading to that stop, so stops spread along the route (ending at the terminus) cover the trip.
 // Every refresh: terminus + Shoresh (together they see buses heading out of TLV and on the highway),
 // plus one rotating stop. Max 2 requests at a time, generous timeout: curlbus is a slow hobby server.
-const LIVE_FIXED = [12, 8], LIVE_ROTATE = [5, 7, 10];
+// ONE request per refresh (curlbus rate-limits): alternate terminus and Shoresh; terminus sees every bus heading to it.
+const LIVE_FIXED = [], LIVE_ROTATE = [12, 8, 12, 5];
 let liveTurn = 0, liveLastErr = "";
 function parseTs(x){ const t=Date.parse(String(x||"").replace(" ","T")); return Number.isFinite(t)?t:NaN; }
 async function fetchLive(){
@@ -309,10 +310,11 @@ async function fetchLive(){
   const okRes=res.filter(r=>r.status==="fulfilled").map(r=>r.value);
   const fails=res.filter(r=>r.status==="rejected").map(r=>r.reason.message);
   if(!okRes.length){
-    liveState=fails.some(m=>/CORS|network/.test(m))?"blocked":"error";
+    const limited=fails.some(m=>/HTTP 429/.test(m));
+    liveState=limited?"rate-limited":fails.some(m=>/CORS|network/.test(m))?"blocked":"error";
     liveLastErr=fails[0]||"";
-    liveRetryAt=Date.now()+2*60000;
-    log(`live source ${liveState}: all ${codes.length} stop queries failed (${fails[0]}). Stride only; retry in 2 min.`);
+    liveRetryAt=Date.now()+(limited?5:2)*60000;   // back off longer when rate-limited
+    log(`live source ${liveState}: all ${codes.length} stop queries failed (${fails[0]}). Stride only; retry in ${limited?5:2} min.`);
     return null;
   }
   if(fails.length) log(`live: ${fails.length}/${codes.length} stop queries failed (ignored)`);
