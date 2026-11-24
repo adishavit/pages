@@ -40,12 +40,13 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sd.mine{width:14px;height:14px;margin:-7px 0 0 -7px;background:#ffcf33;border-color:#c60}
 .slab{position:absolute;top:44px;width:0;height:0}
 .slab>span{position:absolute;left:0;bottom:0;transform-origin:0 100%;transform:rotate(-40deg);font-size:10px;line-height:11px;white-space:nowrap;color:var(--mut);direction:rtl;unicode-bidi:isolate;padding:0 2px}
+.slab.r>span{left:auto;right:0;transform-origin:100% 100%;transform:rotate(40deg)}
 .slab.next>span{color:var(--fg);font-weight:600}
 .slab.past>span{opacity:.45}
 .slab.mine>span{background:#ffcf33;color:#000;font-weight:700;border-radius:3px}
 .sgap,.sarr{position:absolute;top:58px;transform:translateX(-50%);font-size:9px;color:var(--mut);background:var(--bg);padding:0 3px;white-space:nowrap}
 .sarr{font-size:8px;top:46px;background:none;opacity:.7}
-.sdest{position:absolute;right:0;top:0;font-size:10px;font-weight:600;color:var(--acc);direction:rtl;unicode-bidi:isolate}
+.sdest{position:absolute;right:0;top:70px;font-size:10px;font-weight:600;color:var(--acc);direction:rtl;unicode-bidi:isolate}
 .sdest.l{right:auto;left:0}
 .sfix{position:absolute;top:52px;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--str);z-index:3}
 .sfix.live{background:var(--live)}.sfix.old{background:var(--old)}
@@ -168,8 +169,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v27";
-const BUILD="2026-11-24T19:54:54Z";
+const VERSION="v28";
+const BUILD="2026-11-24T19:57:34Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -717,7 +718,12 @@ function renderTraffic(){
   const el=$("traffic"); if(!el) return;
   if(probeState==="disabled"){el.innerHTML=`<div class="card mut">${esc(probeInfo)}</div>`;return;}
   if(!probeAt){el.innerHTML=`<div class="card mut">Traffic: loading bus speeds…</div>`;return;}
-  const runs=trafficRuns(), hot=runs.filter(r=>r.lv>=1&&(r.a1-r.a0>=(r.lv===2?200:300)));
+  const runs=trafficRuns(), hot=[];
+  for(const r of runs.filter(x=>x.lv>=1)){ const last=hot[hot.length-1];       // merge adjacent slow/jam stretches into one hotspot
+    if(last&&r.a0-last.a1<=150){ const t=(last.a1-last.a0)/last.speed+(r.a1-r.a0)/r.speed, pt=(last.a1-last.a0)/last.plan+(r.a1-r.a0)/r.plan;
+      const len=(last.a1-last.a0)+(r.a1-r.a0); last.a1=r.a1; last.lv=Math.max(last.lv,r.lv); last.speed=len/t; last.plan=len/pt; }
+    else hot.push({...r}); }
+  for(let i=hot.length-1;i>=0;i--) if(hot[i].a1-hot[i].a0<(hot[i].lv===2?200:300)) hot.splice(i,1);
   const cov=prof?Math.round(prof.conf.filter(c=>c>=ASM.minConf).length*prof.C/100)/10:0, age=prof&&prof.tRef?Math.round((Date.now()-prof.tRef)/60000):null;
   let h=`<div class="card"><h4>Traffic <span class="mut" style="font-weight:400;font-size:12px">${prof?prof.veh:0} buses · ${cov} km covered${age!=null?` · ${age} min old`:""}</span></h4>`;
   if(!hot.length) h+=cov?`<div>🟢 Moving as planned where measured.</div>`:`<div class="mut">Not enough buses on the road to measure right now.</div>`;
@@ -1004,7 +1010,7 @@ function renderStrip(model){
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
     h+=`<b class="sd${mine?" mine":""}${past?" past":""}${nx?" next":""}" data-code="${esc(s.code)}" style="left:${stripX0[i]}%" title="${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${Math.max(0,Math.round((myEta-Date.now())/60000))}′`:"");
-    h+=`<span class="slab${mine?" mine":""}${past?" past":""}${nx?" next":""}" style="left:${stripX0[i]}%"><span>${lab}</span></span>`;
+    h+=`<span class="slab${stripX0[i]>50?" r":""}${mine?" mine":""}${past?" past":""}${nx?" next":""}" style="left:${stripX0[i]}%"><span>${lab}</span></span>`;
   });
   // destination
   h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
