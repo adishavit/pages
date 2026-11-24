@@ -29,7 +29,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 #lineChip .num{display:inline-block;background:var(--acc);color:#fff;border-radius:6px;padding:0 6px;margin-right:6px}
 .icon{width:38px;height:38px;padding:0;display:grid;place-items:center;font-size:17px}
 .icon.on{background:var(--acc);color:#fff}
-.leaflet-control-attribution{font-size:9px}
+.leaflet-control-attribution{font-size:10px}
 /* bottom sheet */
 #sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,286px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
 #sheet.drag{transition:none}
@@ -48,18 +48,18 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sd.next{border-width:3px}
 .sd.mine{width:14px;height:14px;margin:-7px 0 0 -7px;background:#ffcf33;border-color:#c60}
 .slab{position:absolute;top:44px;width:0;height:0}
-.slab>span{position:absolute;left:0;bottom:0;transform-origin:0 100%;transform:rotate(-40deg);font-size:10px;line-height:11px;white-space:nowrap;color:var(--mut);direction:rtl;unicode-bidi:isolate;padding:0 2px}
+.slab>span{position:absolute;left:0;bottom:0;transform-origin:0 100%;transform:rotate(-40deg);font-size:11px;line-height:12px;white-space:nowrap;color:var(--mut);direction:rtl;unicode-bidi:isolate;padding:0 2px}
 .slab.r>span{left:auto;right:0;transform-origin:100% 100%;transform:rotate(40deg)}
 .slab.next>span{color:var(--fg);font-weight:600}
 .slab.past>span{opacity:.45}
 .slab.mine>span{background:#ffcf33;color:#000;font-weight:700;border-radius:3px}
-.sgap,.sarr{position:absolute;top:58px;transform:translateX(-50%);font-size:9px;color:var(--mut);background:var(--bg);padding:0 3px;white-space:nowrap}
-.sarr{font-size:8px;top:46px;background:none;opacity:.7}
-.sdest{position:absolute;right:0;top:70px;font-size:10px;font-weight:600;color:var(--acc);direction:rtl;unicode-bidi:isolate}
+.sgap,.sarr{position:absolute;top:58px;transform:translateX(-50%);font-size:11px;color:var(--mut);background:var(--bg);padding:0 3px;white-space:nowrap}
+.sarr{font-size:9px;top:46px;background:none;opacity:.7}
+.sdest{position:absolute;right:0;top:70px;font-size:11px;font-weight:600;color:var(--acc);direction:rtl;unicode-bidi:isolate}
 .sdest.l{right:auto;left:0}
 .sfix{position:absolute;top:52px;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--str);z-index:3}
 .sfix.live{background:var(--live)}.sfix.old{background:var(--old)}
-.sbus{position:absolute;top:62px;transform:translateX(-50%);background:var(--str);color:#fff;border-radius:8px;padding:0 5px;font:700 10px/13px system-ui,sans-serif;white-space:nowrap;z-index:4;transition:left 1s linear;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.sbus{position:absolute;top:62px;transform:translateX(-50%);background:var(--str);color:#fff;border-radius:8px;padding:0 5px;font:700 11px/14px system-ui,sans-serif;white-space:nowrap;z-index:4;transition:left 1s linear;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .sbus small{font-weight:400;margin-left:3px}
 .sbus.live{background:var(--live)}.sbus.old{background:var(--old)}
 .sbus.focus{outline:2px solid #ffcf33}
@@ -79,7 +79,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .pane{display:none;padding:8px 12px 24px}.pane.sel{display:block}
 #status{font-size:11px;color:var(--mut);padding:2px 16px 6px}
 #status.err{color:var(--late)}
-#disc{font-size:10px;color:var(--mut);padding:0 16px 6px;opacity:.8}
+#disc{font-size:11px;color:var(--mut);padding:0 16px 6px;opacity:.8}
 /* bus cards */
 .card{background:var(--card);border-radius:12px;padding:10px 12px;margin:8px 0;font-size:13px;line-height:1.45}
 .card.stale{opacity:.6}
@@ -111,10 +111,12 @@ tr.past td{color:var(--mut)}
 .set .btn{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 12px}
 .opt{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:6px 0;font-size:13px}
 .opt.cur{border-color:var(--acc)}
+details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
+#diag summary{font-size:14px;font-weight:600;cursor:pointer;padding:6px 0;min-height:32px}
 #dbg{font:11px/1.35 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;background:var(--card);padding:6px;border-radius:8px;max-height:50vh;overflow:auto}
 /* map markers */
 .bm{position:absolute;transform:translate(-50%,-50%);background:var(--str);color:#fff;border:2px solid #fff;border-radius:12px;padding:1px 6px 2px;font:700 13px/15px system-ui,sans-serif;text-align:center;box-shadow:0 1px 5px rgba(0,0,0,.5);white-space:nowrap}
-.bm small{display:block;font-size:10px;font-weight:500;line-height:11px}
+.bm small{display:block;font-size:11px;font-weight:500;line-height:12px}
 .bm.live{background:var(--live)}.bm.old{background:var(--old)}
 .bm.est{background:#fff;color:var(--str);border:2px dashed var(--str)}
 .bm .arr{position:absolute;left:50%;top:50%;width:0;height:0;margin:-30px 0 0 -7px;border:7px solid transparent;border-bottom:11px solid #111;transform-origin:7px 30px;opacity:.85}
@@ -153,8 +155,8 @@ tr.past td{color:var(--mut)}
 <div id="map"></div>
 <div id="top">
   <button id="lineChip" class="chip" title="Change line">Loading…</button>
-  <button id="btnFit" class="chip icon" title="Whole route">⤢</button>
-  <button id="btnMe" class="chip icon" title="My location">📍</button>
+  <button id="btnFit" class="chip icon" title="Whole route" aria-label="Show the whole route">⤢</button>
+  <button id="btnMe" class="chip icon" title="My location" aria-label="Show my location">📍</button>
 </div>
 <div id="pick" class="set" hidden>
   <div class="hd"><b>Line &amp; direction</b><button id="pickX" class="chip icon" aria-label="Close">✕</button></div>
@@ -165,34 +167,37 @@ tr.past td{color:var(--mut)}
 <div id="upd"></div>
 <div id="toast"></div>
 <div id="sheet">
-  <div id="grab"><i></i></div>
-  <div id="strip"><div id="stripIn"></div></div>
+  <div id="grab" role="button" aria-label="Resize panel"><i></i></div>
+  <div id="strip" aria-label="Line diagram: tap a station to make it your stop"><div id="stripIn"></div></div>
   <div id="hero">
     <div id="heroTop"><span id="heroStop">My stop: tap a station</span><span id="heroAge"></span></div>
     <div id="heroMain"><div id="heroMin">–</div><div id="heroTxt" class="mut">Loading…</div></div>
     <div id="heroNext"></div>
   </div>
-  <div id="tabs">
-    <button data-t="stop" class="sel">My stop</button><button data-t="buses">Buses</button><button data-t="line">Line</button><button data-t="set" aria-label="Settings" title="Settings"><svg class="gear" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94 7.07 7.07 0 0 0-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.56-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0-.06.94c0 .32.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.5.38 1.04.7 1.63.94l.36 2.54c.05.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.59-.24 1.13-.56 1.63-.94l2.39.96c.22.08.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg></button>
+  <div id="tabs" role="tablist">
+    <button data-t="stop" class="sel" role="tab" aria-selected="true">My stop</button><button data-t="buses" role="tab" aria-selected="false">Buses</button><button data-t="line" role="tab" aria-selected="false">Line</button><button data-t="set" role="tab" aria-selected="false" aria-label="Settings" title="Settings"><svg class="gear" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94 7.07 7.07 0 0 0-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.56-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0-.06.94c0 .32.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.5.38 1.04.7 1.63.94l.36 2.54c.05.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.59-.24 1.13-.56 1.63-.94l2.39.96c.22.08.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg></button>
   </div>
   <div id="panes">
     <div class="pane sel" id="p-stop"><div id="board"></div><div class="sub" id="depsHd">Timetable</div><div id="deps"></div></div>
     <div class="pane" id="p-buses"><div id="buses"></div></div>
-    <div class="pane" id="p-line"><div id="traffic"></div><div class="mut" style="font-size:12px">Tap a station to make it your stop.</div><div id="diagram"></div></div>
+    <div class="pane" id="p-line"><div id="traffic"></div><div id="lineHint" class="mut" style="font-size:12px">Tap a station to make it your stop.</div><div id="diagram"></div></div>
     <div class="pane set" id="p-set">
       <h3>Map style</h3>
       <select id="mapStyle" style="font:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);max-width:100%"></select>
       <h3>Line</h3>
       <div class="mut" style="font-size:12px">Tap the line name at the top to change line.</div>
+      <h3>About</h3>
+      <div class="mut" style="font-size:12px">Positions: <b>green</b> = live (~1 min old), <b>red</b> = recent (a few minutes old), <b>grey</b> = no recent update, dashed = estimate. ETAs are the operator's own predictions. Delays compare with today's timetable.</div>
+      <details id="diag"><summary>Diagnostics</summary>
+      <h3>Version</h3>
+      <div id="ver" class="mut" style="font-size:12px"></div>
       <h3>Prediction accuracy <button class="chip" id="accReset" style="font-size:12px;padding:3px 10px">Reset</button></h3>
       <div id="accTable"></div>
       <h3>Traffic probes</h3>
       <div id="probeInfo" class="mut" style="font-size:12px"></div>
-      <h3>About</h3>
-      <div id="ver" class="mut" style="font-size:12px"></div>
-      <div class="mut" style="font-size:12px;margin-top:4px">Positions: <b>green</b> = live (~1 min old), <b>red</b> = recent (a few minutes old), <b>grey</b> = no recent update, dashed = estimate. ETAs are the operator's own predictions. Delays compare with today's timetable.</div>
       <h3>Debug log <button class="chip" id="copyLog" style="font-size:12px;padding:3px 10px">Copy</button></h3>
       <pre id="dbg"></pre>
+      </details>
     </div>
   </div>
   <div id="status">Loading…</div>
@@ -202,8 +207,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v49";
-const BUILD="2026-11-24T20:49:20Z";
+const VERSION="v50";
+const BUILD="2026-11-24T20:53:41Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -789,8 +794,7 @@ function renderAccuracy(){
 }
 function renderTraffic(){
   const el=$("traffic"); if(!el) return;
-  if(probeState==="disabled"){el.innerHTML=`<div class="card mut">${esc(probeInfo)}</div>`;return;}
-  if(!probeAt){el.innerHTML=`<div class="card mut">Traffic: loading…</div>`;return;}
+  if(probeState==="disabled"||!probeAt){el.innerHTML="";return;}   // details in ⚙︎ Diagnostics
   const runs=trafficRuns(), hot=[];
   for(const r of runs.filter(x=>x.lv>=1)){ const last=hot[hot.length-1];       // merge adjacent slow/jam stretches into one hotspot
     if(last&&r.a0-last.a1<=150){ const t=(last.a1-last.a0)/last.speed+(r.a1-r.a0)/r.speed, pt=(last.a1-last.a0)/last.plan+(r.a1-r.a0)/r.plan;
@@ -798,8 +802,8 @@ function renderTraffic(){
     else hot.push({...r}); }
   for(let i=hot.length-1;i>=0;i--) if(hot[i].a1-hot[i].a0<(hot[i].lv===2?200:300)) hot.splice(i,1);
   const cov=prof?Math.round(prof.conf.filter(c=>c>=ASM.minConf).length*prof.C/100)/10:0, age=prof&&prof.tRef?Math.round((Date.now()-prof.tRef)/60000):null;
+  if(!hot.length){ el.innerHTML=cov?`<div class="mut" style="font-size:13px;padding:4px 2px">🟢 Traffic is normal along the route</div>`:""; return; }
   let h=`<div class="card"><h4>Traffic</h4>`;
-  if(!hot.length) h+=cov?`<div>🟢 Traffic is normal along the route.</div>`:`<div class="mut">No traffic information right now.</div>`;
   for(const r of hot) h+=`<div>${r.lv===2?"🔴 Heavy":"🟠 Slow"}: <span class="rtl">${esc(runName(r))}</span> <span class="mut">· ${Math.round(r.speed*3.6)} km/h, usually ${Math.round(r.plan*3.6)}</span></div>`;
   el.innerHTML=h+"</div>";
 }
@@ -963,7 +967,7 @@ function renderDiagram(model,preds){
     let seg=""; const nx=stops[i+1];
     if(nx&&prof){ let worst=null; for(let k=Math.floor(s.along/prof.C);k<prof.n&&k*prof.C<nx.along;k++){ const lv=cellLevel(k); if(lv!=null&&(worst==null||lv>worst)) worst=lv; }
       if(worst!=null) seg=`<i class="seg" style="background:${LEVEL_COLOR[worst]}"></i>`; }
-    h+=`<div class="srow${mine?" mine":""}" data-code="${esc(s.code)}">${seg}<span class="dot"></span><span class="nm">${esc(s.name)}</span>
+    h+=`<div class="srow${mine?" mine":""}" data-code="${esc(s.code)}" role="button" tabindex="0">${seg}<span class="dot"></span><span class="nm">${esc(s.name)}</span>
       <span class="tm">${t?`next <b>${hm(t)}</b>`:Number.isFinite(s.off)?`+${Math.round(s.off/60)} min`:""}</span></div>`;});
   // buses between rows (by distance along the route)
   for(const b of model){
@@ -1069,7 +1073,7 @@ let lastModel=[];
 function render(){
   const model=buildModel(); lastModel=model;
   renderMap(model); renderCards(model); renderDiagram(model); renderDeps(model); renderBoard(model); renderHero(model); renderTitle(); renderTraffic(); renderAccuracy(); renderStrip(model); renderFresh();
-  $("strip").classList.toggle("pick",!myStop()&&stops.length>0);
+  $("strip").classList.toggle("pick",!myStop()&&stops.length>0); $("lineHint").style.display=myStop()?"none":"";
   $("probeInfo").textContent=(probeInfo||"not run yet")+(probeAt?` · last run ${hm(probeAt)}`:"");
   const st=$("status"), lag=newestMs?Math.round((Date.now()-newestMs)/60000):null;
   const lv=liveState==="ok"||liveState==="ok-warn"?"live":liveState==="untried"?"":"live positions unavailable";
@@ -1155,13 +1159,13 @@ function renderStrip(model){
     }
     const gapMin=(stops[i+1].off-stops[i].off)/60, gx=Math.abs(SX(i+1)-SX(i));
     if(gapMin>=10&&gx>14) h+=`<span class="sgap" style="left:${(SX(i)+SX(i+1))/2}%">~${Math.round(gapMin)} min ${stripFlip?"◀":"▶"}</span>`;
-    else if(gx>7) h+=`<span class="sarr" style="left:${(SX(i)+SX(i+1))/2}%">${stripFlip?"◀":"▶"}</span>`;
+    else if(gx>7) h+=`<span class="sarr" aria-hidden="true" style="left:${(SX(i)+SX(i+1))/2}%">${stripFlip?"◀":"▶"}</span>`;
   }
   // stations, all named (angled); my stop with its ETA
   const p=myStop()?myStopPredictions(model):[], myEta=p.length?p[0].t:null, my=myStop();
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
-    h+=`<b class="sd${mine?" mine":""}${past?" past":""}${nx?" next":""}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}"></b>`;
+    h+=`<b class="sd${mine?" mine":""}${past?" past":""}${nx?" next":""}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"My stop: ":"Set as my stop: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${Math.max(0,Math.round((myEta-Date.now())/60000))}′`:"");
     h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":""}${past?" past":""}${nx?" next":""}" style="left:${SX(i)}%"><span>${lab}</span></span>`;
   });
@@ -1247,8 +1251,10 @@ function setSheet(i){sheetIdx=Math.max(0,Math.min(2,i));const h=SNAP()[sheetIdx]
     if(!moved){setSheet(sheetIdx===0?1:0);}else{let bi=0;s.forEach((v,i)=>{if(Math.abs(v-h)<Math.abs(s[bi]-h))bi=i;});setSheet(bi);}y0=null;};
   for(const id of ["grab","hero"]){const el=$(id);el.addEventListener("pointerdown",down);el.addEventListener("pointermove",move);el.addEventListener("pointerup",up);el.addEventListener("pointercancel",up);}
 })();
+if(new URLSearchParams(location.search).has("debug")) $("diag").open=true;
+$("diag").addEventListener("toggle",()=>{ if($("diag").open) $("dbg").textContent=LOG.join("\n"); });
 $("tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
-  for(const x of $("tabs").children)x.classList.toggle("sel",x===b);
+  for(const x of $("tabs").children){x.classList.toggle("sel",x===b);x.setAttribute("aria-selected",x===b);}
   for(const p of document.querySelectorAll(".pane"))p.classList.toggle("sel",p.id==="p-"+b.dataset.t);
   if(sheetIdx===0)setSheet(1); if(b.dataset.t==="set")$("dbg").textContent=LOG.join("\n");});
 $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r)setMyStop(r.dataset.code);});
@@ -1278,6 +1284,9 @@ $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r
       if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); };
     lensAnim=requestAnimationFrame(shrink); };
   el.addEventListener("pointerup",release); el.addEventListener("pointercancel",release);
+  // screen readers / keyboard: activation arrives as a click (detail 0) or Enter on a station
+  el.addEventListener("click",e=>{ const d=e.target.closest(".sd"); if(d&&e.detail===0) setMyStop(d.dataset.code); });
+  el.addEventListener("keydown",e=>{ const d=e.target.closest(".sd"); if(d&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setMyStop(d.dataset.code);} });
 })();
 function openPicker(on){ const el=$("pick"); el.hidden=!on; if(on){pickOpts=null; renderLineOpts(); renderRecent();} }
 $("lineChip").addEventListener("click",e=>{
@@ -1297,7 +1306,8 @@ $("lineForm").addEventListener("submit",async e=>{e.preventDefault();const n=$("
 $("copyLog").addEventListener("click",()=>{const txt=$("ver").textContent+"\n"+LOG.join("\n");
   const sel=()=>{const r=document.createRange();r.selectNodeContents($("dbg"));const w=getSelection();w.removeAllRanges();w.addRange(r);toast("Selected: use Copy");};
   try{navigator.clipboard.writeText(txt).then(()=>toast("Log copied"),sel);}catch(_){sel();}});
-// my location
+// my location (hidden until the page is served over HTTPS: browsers only give location to secure pages)
+if(!window.isSecureContext) $("btnMe").style.display="none";
 let meWatch=null, meCentered=false;
 $("btnMe").addEventListener("click",()=>{
   const btn=$("btnMe");
