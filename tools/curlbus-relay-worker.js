@@ -1,4 +1,4 @@
-// Cloudflare Worker v4: relay for the bus tracker page.
+// Cloudflare Worker v5: relay for the bus tracker page.
 //   GET /<stop_code>        -> curlbus.app stop arrivals (JSON), CORS-enabled
 //   GET /osrm/<lon,lat;...> -> OSRM road geometry through the given points
 //   GET /stride/siri_vehicle_locations/list?<box+time> -> Stride bus positions in a small map box (traffic probes)
@@ -16,7 +16,7 @@
 const ALLOWED_ORIGINS = ["https://videocortex.io", "http://videocortex.io", "https://adishavit.github.io"];
 const STOP_FRESH_MS = 45_000, STOP_STALE_MS = 10 * 60_000, OSRM_TTL_MS = 24 * 3600_000;
 const PER_IP_PER_MIN = 60;          // a page now makes ~1 live + ~16 probe requests per few minutes
-const STRIDE_FRESH_MS = 90_000;      // probe boxes: one upstream query per box per 90 s
+const STRIDE_FRESH_MS = 300_000;     // probe boxes: one upstream query per box per 5 min (the page's time window)
 const STRIDE_KEYS = ["lat__greater_or_equal", "lat__lower_or_equal", "lon__greater_or_equal", "lon__lower_or_equal",
                      "recorded_at_time_from", "recorded_at_time_to", "limit"];
 
@@ -102,11 +102,18 @@ export default {
           +out.get("lon__lower_or_equal") - +out.get("lon__greater_or_equal") > 0.1)
         return new Response("box too large", { status: 400, headers: c });
       const qs = out.toString(), key = "stride:" + qs, hit = cache.get(key);
-      if (hit && now - hit.t < STRIDE_FRESH_MS) return reply(hit.body, 200, "fresh", 60);
+      if (hit && now - hit.t < STRIDE_FRESH_MS) return reply(hit.body, 200, "fresh", 300);
       try {
         const r = await shared(key, "https://open-bus-stride-api.hasadna.org.il/siri_vehicle_locations/list?" + qs,
                                { "User-Agent": "bus-tracker-relay (shared cache)" });
-        if (r.status === 200) { remember(key, { t: Date.now(), body: r.body }); return reply(r.body, 200, "miss", 60); }
+        if (r.status === 200) {
+          // compact: only the 5 fields the page uses (5-8x smaller on the phone)
+          let body = r.body;
+          try { const a = JSON.parse(body);
+                if (Array.isArray(a)) body = JSON.stringify({ compact: 1, rows: a.map(x => [String(x.siri_ride__vehicle_ref ?? x.siri_ride__id ?? ""),
+                  Math.round(Date.parse(x.recorded_at_time) / 1000), +(+x.lat).toFixed(6), +(+x.lon).toFixed(6), x.bearing ?? null]) }); } catch (_) {}
+          remember(key, { t: Date.now(), body }); return reply(body, 200, "miss", 300);
+        }
         if (hit) return reply(hit.body, 200, "stale-" + r.status, 60);
         return reply(JSON.stringify({ error: "stride HTTP " + r.status }), r.status, "error", 0);
       } catch (e) {

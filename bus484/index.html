@@ -140,8 +140,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v17";
-const BUILD="2026-11-24T19:10:46Z";
+const VERSION="v18";
+const BUILD="2026-11-24T19:16:15Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -389,7 +389,7 @@ function merge(rows){
 
 // ---------- traffic from bus probes (every bus line on our road is a speed sensor) ----------
 let sections=[], sectionSig="", probeState="off", probeInfo="", probeAt=0, probeBusy=false, probeDirect=false;
-const SEC_CITY=1500, SEC_HWY=4000, PROBE_MS=180000;
+const SEC_CITY=1500, SEC_HWY=4000, PROBE_MS=300000;   // every 5 min: traffic changes slowly, Stride is minutes behind anyway
 function routeBearing(a){const p=pointAt(a),q=pointAt(Math.min(routeLen(),a+40));const y=Math.sin((q[1]-p[1])*Math.PI/180)*Math.cos(q[0]*Math.PI/180),x=Math.cos(p[0]*Math.PI/180)*Math.sin(q[0]*Math.PI/180)-Math.sin(p[0]*Math.PI/180)*Math.cos(q[0]*Math.PI/180)*Math.cos((q[1]-p[1])*Math.PI/180);return(Math.atan2(y,x)*180/Math.PI+360)%360;}
 const angDiff=(a,b)=>{const d=Math.abs(a-b)%360;return d>180?360-d:d;};
 function buildSections(){
@@ -449,12 +449,14 @@ async function fetchProbes(){
   probeBusy=true; probeAt=Date.now();
   const B=Math.floor(Date.now()/PROBE_MS)*PROBE_MS;     // same window for every viewer -> shared relay cache
   const iso=ms=>new Date(ms).toISOString().slice(0,16)+":00Z";
-  const from=iso(B-15*60000), to=iso(B+5*60000);
+  const from=iso(B-15*60000), to=iso(B+PROBE_MS);
   let rowsTot=0, outside=0, ok=0, fails=0;
   const qOf=s=>`lat__greater_or_equal=${s.box[0].toFixed(5)}&lat__lower_or_equal=${s.box[1].toFixed(5)}&lon__greater_or_equal=${s.box[2].toFixed(5)}&lon__lower_or_equal=${s.box[3].toFixed(5)}&recorded_at_time_from=${from}&recorded_at_time_to=${to}&limit=1000`;
   const one=async s=>{
     let rows; const viaRelay=!probeDirect;
-    try{rows=await getJSON(`probe-${s.i}`,viaRelay?`${LIVE_BASE}/stride/siri_vehicle_locations/list?${qOf(s)}`:`${API}/siri_vehicle_locations/list?${qOf(s)}`,30000);}
+    try{rows=await getJSON(`probe-${s.i}`,viaRelay?`${LIVE_BASE}/stride/siri_vehicle_locations/list?${qOf(s)}`:`${API}/siri_vehicle_locations/list?${qOf(s)}`,30000,false);
+      if(rows&&rows.compact) rows=rows.rows.map(([v,t,lat,lon,b])=>({siri_ride__vehicle_ref:v,recorded_at_time:new Date(t*1000).toISOString(),lat,lon,bearing:b}));   // compact form from relay v5
+      if(!Array.isArray(rows)) throw new Error(`probe-${s.i}: unexpected reply`);}
     catch(e){ if(viaRelay&&/HTTP 40[04]/.test(e.message)){ if(!probeDirect){probeDirect=true;log("relay has no probe endpoint (update the relay) -> asking Stride directly");} return one(s);} fails++; return; }
     rowsTot+=rows.length;
     for(const r of rows) if(r.lat<s.box[0]-0.002||r.lat>s.box[1]+0.002||r.lon<s.box[2]-0.002||r.lon>s.box[3]+0.002) outside++;
