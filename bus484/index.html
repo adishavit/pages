@@ -158,8 +158,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v23";
-const BUILD="2026-11-24T19:40:39Z";
+const VERSION="v24";
+const BUILD="2026-11-24T19:43:23Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -310,6 +310,10 @@ function tickEst(jump){
 setInterval(()=>tickEst(false),1000);
 if(HAVE_MAP){
   map=L.map("map",{zoomControl:false,attributionControl:false}).setView([32.0,34.9],9);
+  // Leaflet rounds marker positions to whole pixels; slow movement then looks like x,y,x,y stair steps.
+  // SmoothMarker keeps sub-pixel positions (browsers render fractional transforms smoothly).
+  window.SmoothMarker=L.Marker.extend({update(){ if(this._icon&&this._map){ const p=this._map.project(this._latlng)._subtract(this._map.getPixelOrigin());   // unrounded (latLngToLayerPoint rounds)
+    L.DomUtil.setPosition(this._icon,p); this._icon.style.zIndex=Math.round(p.y+this.options.zIndexOffset); } return this; }});
   L.control.attribution({position:"topright",prefix:false}).addTo(map);
   setMapStyle(MAP_STYLE,true);
   stopLayer=L.layerGroup().addTo(map); hotLayer=L.layerGroup().addTo(map); trailLayer=L.layerGroup().addTo(map); estLayer=L.layerGroup().addTo(map); meLayer=L.layerGroup().addTo(map);
@@ -796,14 +800,14 @@ function renderMap(model){
     keep.add(b.ref);
     if(b.fx.length>1) L.polyline(b.fx.map(f=>[f.lat,f.lon]),{color:b.stale?"#9aa0a6":b.live?"#2e7d32":"#d32f2f",weight:3,opacity:.55}).addTo(trailLayer);
     let e=busMarkers.get(b.ref);
-    if(!e){e={m:L.marker([b.r.lat,b.r.lon],{icon:busIcon(b),zIndexOffset:1000}).addTo(map)};busMarkers.set(b.ref,e);}
+    if(!e){e={m:new SmoothMarker([b.r.lat,b.r.lon],{icon:busIcon(b),zIndexOffset:1000}).addTo(map)};busMarkers.set(b.ref,e);}
     else{e.m.setIcon(busIcon(b)); animate(e,[b.r.lat,b.r.lon]);}
     e.m.bindTooltip(`${esc(title.num)} ${b.start!=null?hm(b.start)+" dep. · ":""}${b.live?"live":"Stride"} fix ${hms(tms(b.r))}`);
     // estimated-position marker: persistent, moved every second by tickEst()
     let es=estMarkers.get(b.ref);
     if(b.stale){ if(es){es.m.remove();es.line.remove();estMarkers.delete(b.ref);} }
     else{
-      if(!es){ es={m:L.marker(pointAt(b.estAlong),{icon:busIcon(b,true),opacity:0}).bindTooltip("Estimated position now").addTo(estLayer),
+      if(!es){ es={m:new SmoothMarker(pointAt(b.estAlong),{icon:busIcon(b,true),opacity:0}).bindTooltip("Estimated position now").addTo(estLayer),
                    line:L.polyline([],{color:"#d32f2f",weight:3,dashArray:"4 6"}).addTo(estLayer)}; estMarkers.set(b.ref,es); }
       else es.m.setIcon(busIcon(b,true));
       Object.assign(es,{along:b.along,fixT:tms(b.r),sp:b.sp});
