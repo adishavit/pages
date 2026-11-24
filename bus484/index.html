@@ -175,8 +175,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v36";
-const BUILD="2026-11-24T20:10:55Z";
+const VERSION="v37";
+const BUILD="2026-11-24T20:15:18Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1138,25 +1138,28 @@ $("tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)
   for(const p of document.querySelectorAll(".pane"))p.classList.toggle("sel",p.id==="p-"+b.dataset.t);
   if(sheetIdx===0)setSheet(1); if(b.dataset.t==="set")$("dbg").textContent=LOG.join("\n");});
 $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r)setMyStop(r.dataset.code);});
-(function lens(){   // fisheye while touching; the strip keeps the finger for the whole touch (no snapping back)
-  const el=$("strip"); let raf=0, down=false, x0=0, y0=0, t0=0, moved=false;
+(function lens(){   // tap = pick a station; press-and-hold or slide = fisheye lens (keeps the finger for the whole touch)
+  const el=$("strip"); let raf=0, down=false, x0=0, y0=0, moved=false, lensOn=false, holdT=0, lastX=50;
   const draw=()=>{raf=0; renderStrip(lastModel||[]);};
   const ask=()=>{ if(!raf) raf=requestAnimationFrame(draw); };
-  const at=e=>{const r=$("stripIn").getBoundingClientRect(); return Math.max(0,Math.min(100,(e.clientX-r.left)/r.width*100));};
-  el.addEventListener("pointerdown",e=>{ down=true; moved=false; x0=e.clientX; y0=e.clientY; t0=performance.now();
-    try{ el.setPointerCapture(e.pointerId); }catch(_){}
-    cancelAnimationFrame(lensAnim); lensF=at(e); el.classList.add("lensing");
+  const at=x=>{const r=$("stripIn").getBoundingClientRect(); return Math.max(0,Math.min(100,(x-r.left)/r.width*100));};
+  const startLens=()=>{ if(lensOn||!down) return; lensOn=true; clearTimeout(holdT); cancelAnimationFrame(lensAnim);
+    lensF=at(lastX); el.classList.add("lensing");
     const s0=performance.now(), k0=lensK; const grow=now=>{ lensK=Math.min(1,k0+(now-s0)/150); ask(); if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); };
-    lensAnim=requestAnimationFrame(grow); e.preventDefault(); });
-  el.addEventListener("pointermove",e=>{ if(!down) return; if(Math.hypot(e.clientX-x0,e.clientY-y0)>8) moved=true; lensF=at(e); ask(); });
-  const release=e=>{ if(!down) return; down=false; try{ el.releasePointerCapture(e.pointerId); }catch(_){}
-    // a short tap without sliding picks the nearest station (positions as shown, lens included)
-    if(e.type==="pointerup"&&!moved&&performance.now()-t0<500&&stripX0){
-      const r=$("stripIn").getBoundingClientRect(), xp=(e.clientX-r.left)/r.width*100; let bi=-1,bd=Infinity;
-      stops.forEach((st,i)=>{const d=Math.abs(SX(i)-xp); if(d<bd){bd=d;bi=i;}});
-      if(bi>=0&&bd*r.width/100<=24) setMyStop(stops[bi].code);
-    }
-    cancelAnimationFrame(lensAnim);
+    lensAnim=requestAnimationFrame(grow); };
+  el.addEventListener("pointerdown",e=>{ down=true; moved=false; lensOn=false; x0=lastX=e.clientX; y0=e.clientY;
+    try{ el.setPointerCapture(e.pointerId); }catch(_){}
+    holdT=setTimeout(startLens,180); e.preventDefault(); });
+  el.addEventListener("pointermove",e=>{ if(!down) return; lastX=e.clientX;
+    if(!moved&&Math.hypot(e.clientX-x0,e.clientY-y0)>6){ moved=true; startLens(); }
+    if(lensOn){ lensF=at(e.clientX); ask(); } });
+  const release=e=>{ if(!down) return; down=false; clearTimeout(holdT); try{ el.releasePointerCapture(e.pointerId); }catch(_){}
+    if(!lensOn){   // quick tap: choose the nearest station, no lens
+      if(e.type==="pointerup"&&stripX0){ const r=$("stripIn").getBoundingClientRect(), xp=(e.clientX-r.left)/r.width*100; let bi=-1,bd=Infinity;
+        stops.forEach((st,i)=>{const d=Math.abs(SX(i)-xp); if(d<bd){bd=d;bi=i;}});
+        if(bi>=0&&bd*r.width/100<=24) setMyStop(stops[bi].code); }
+      return; }
+    lensOn=false; cancelAnimationFrame(lensAnim);
     const s0=performance.now(), k0=lensK; const shrink=now=>{ lensK=Math.max(0,k0*(1-(now-s0)/250)); ask();
       if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); };
     lensAnim=requestAnimationFrame(shrink); };
