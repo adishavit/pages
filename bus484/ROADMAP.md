@@ -34,6 +34,18 @@ Goal: know how wrong our arrival predictions are, and learn to make them better.
   are often not like-for-like; always benchmark).
 - Usual Kalman setup = previous bus on the same segment; weak for hourly lines. Our edge: probe speeds from all lines.
 
+### "Waze for my bus" (explored 2026-11-24)
+- Pick my bus (tap; later auto via location once HTTPS) + destination → live ETA from bus position + live section
+  speeds (+ operator ETA when available); timetable only if clearly labelled. Share via WhatsApp/SMS link
+  (works on http; Web Share API needs HTTPS); the recipient's link shows the bus moving and the ETA updating, then "arrived".
+- Findings (line 480, 23:48):
+  - curlbus returned HTTP 500 for every 480 stop tested (Karliback fine), so the operator ETA is a bonus, not the backbone.
+  - Express-vs-local bias: city-section probe speeds come from local buses (21–39 km/h at the Jerusalem entrance) and
+    understate an express bus; the timetable assumes ~90 km/h right into the station.
+    23:20 bus predictions: timetable 00:04, own speed 00:10, congestion model 00:22 (outcome check scheduled).
+  - Trips appear in the feed exactly 5 min before their scheduled departure, already at the first station
+    (3 trips on 480). Nothing earlier, so positions on the way to the first station aren't visible. Verify across lines in the backtest lab.
+
 ## Other open items
 - HTTPS for videocortex.io (unblocks 📍 and alerts; main security gap).
 - Relay v7 is written (tools/curlbus-relay-worker.js) but needs a manual paste into Cloudflare.
