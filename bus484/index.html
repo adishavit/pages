@@ -41,6 +41,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .pane{display:none;padding:8px 12px 24px}.pane.sel{display:block}
 #status{font-size:11px;color:var(--mut);padding:2px 16px 6px}
 #status.err{color:var(--late)}
+#disc{font-size:10px;color:var(--mut);padding:0 16px 6px;opacity:.8}
 /* bus cards */
 .card{background:var(--card);border-radius:12px;padding:10px 12px;margin:8px 0;font-size:13px;line-height:1.45}
 .card.stale{opacity:.6}
@@ -125,13 +126,14 @@ tr.past td{color:var(--mut)}
     </div>
   </div>
   <div id="status">Loading…</div>
+  <div id="disc">Unofficial · data may be delayed or wrong · sources: Ministry of Transport (via curlbus), Hasadna Open Bus</div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v14";
-const BUILD="2026-11-24T18:35:44Z";
+const VERSION="v15";
+const BUILD="2026-11-24T18:44:26Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -160,7 +162,7 @@ let REF=+qs.get("ref")||(LINE==="484"?19094:0);
 let MY_STOP=qs.get("stop")||load("mystop:"+LINE+":"+REF)||(REF===19094?"20750":"");   // default Karliback for 484 -> Mevaseret
 let LIVE_BASE=(qs.get("relay")||load("relay484")||"https://shiny-shadow-cc40.adishavit.workers.dev").replace(/\/$/,"");
 if(qs.get("relay")) store("relay484",LIVE_BASE);
-const REFRESH_MS=60000, TIMEOUT_MS=30000, LIMIT=500, FIRST_WINDOW_MIN=30, KEEP_MIN=30, STALE_MIN=5;
+const REFRESH_MS=60000, IDLE_REFRESH_MS=180000, TIMEOUT_MS=30000, LIMIT=500, FIRST_WINDOW_MIN=30, KEEP_MIN=30, STALE_MIN=5;
 log(`start ${VERSION} build=${BUILD} line=${LINE} ref=${REF} stop=${MY_STOP} relay=${LIVE_BASE}`);
 log(`UA: ${navigator.userAgent} | origin=${location.origin} | secure=${window.isSecureContext}`);
 function setUrl(){const p=new URLSearchParams(location.search);p.set("line",LINE);if(REF)p.set("ref",REF);if(MY_STOP)p.set("stop",MY_STOP);else p.delete("stop");p.delete("relay");p.delete("v");
@@ -284,7 +286,10 @@ async function loadRoad(){
   const key="road:"+stops.map(s=>(+s.lat).toFixed(4)+","+(+s.lon).toFixed(4)).join(";");
   const c=load(key); if(c){try{road=JSON.parse(c);log(`road: ${road.length} pts (cache)`);drawStops();render();return;}catch(_){}}
   try{
-    const d=await getJSON("road",`https://router.project-osrm.org/route/v1/driving/${stops.map(s=>s.lon+","+s.lat).join(";")}?overview=full&geometries=geojson`,TIMEOUT_MS,false);
+    const coords=stops.map(s=>(+s.lon).toFixed(6)+","+(+s.lat).toFixed(6)).join(";");
+    let d;
+    try{ d=await getJSON("road(relay)",`${LIVE_BASE}/osrm/${coords}`,TIMEOUT_MS,false); }   // relay caches shapes 24 h
+    catch(e){ log("road via relay failed, trying OSRM directly"); d=await getJSON("road",`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,TIMEOUT_MS,false); }
     if(d.code!=="Ok") throw new Error("OSRM "+d.code);
     road=d.routes[0].geometry.coordinates.map(([x,y])=>[y,x]); store(key,JSON.stringify(road));
     log(`road: ${road.length} pts, ${(d.routes[0].distance/1000).toFixed(1)} km`); drawStops(); render();
@@ -567,6 +572,16 @@ function render(){
 }
 
 // ---------- refresh loop ----------
+// Poll every minute only when it matters: a live bus is moving, or the next bus at my stop is due within 20 min.
+function pollInterval(){
+  const now=Date.now();
+  const active=lastModel.some(b=>!b.stale);
+  const p=myStop()?myStopPredictions(lastModel):[];
+  const soon=p.length&&p[0].t-now<20*60000;
+  const iv=(active||soon||!okCount)?REFRESH_MS:IDLE_REFRESH_MS;
+  if(iv!==pollInterval.last){log(`poll interval ${iv/1000}s (${active?"bus active":soon?"bus due soon":!okCount?"first load":"quiet"})`);pollInterval.last=iv;}
+  return iv;
+}
 function schedule(ms){clearTimeout(timer);nextAt=Date.now()+ms;timer=setTimeout(refresh,ms);}
 async function refresh(){
   if(inFlight){log("refresh skipped (running)");return;}
@@ -582,7 +597,7 @@ async function refresh(){
     log(`refresh ok: ${rows.length} rows, ${added} new, ${vehicles.size} vehicles`);
     refreshErr="";
   }catch(e){failCount++;refreshErr=e.message;log("refresh failed: "+e.message);}
-  finally{inFlight=false;render();if(!document.hidden)schedule(REFRESH_MS);}
+  finally{inFlight=false;render();if(!document.hidden)schedule(pollInterval());}
 }
 setInterval(()=>{ // ticking clocks + countdown
   $("ver").textContent=`${VERSION} · built ${BUILD} (${fmtAge((Date.now()-Date.parse(BUILD))/1000)} ago) · opened ${fmtAge((Date.now()-PAGE_LOADED)/1000)} ago · ok ${okCount}/fail ${failCount}${inFlight?" · fetching…":nextAt?` · next in ${Math.max(0,Math.round((nextAt-Date.now())/1000))}s`:""} · relay ${LIVE_BASE.replace(/^https?:\/\//,"")}`;
@@ -590,7 +605,7 @@ setInterval(()=>{ // ticking clocks + countdown
 setInterval(()=>{ if(!document.hidden) renderHero(lastModel.length?buildModel():lastModel); },15000);
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden){clearTimeout(timer);nextAt=0;log("hidden: paused");return;}
-  log("visible"); if(inFlight) return; const since=Date.now()-lastRun; since>15000?refresh():schedule(REFRESH_MS-since);
+  log("visible"); if(inFlight) return; const since=Date.now()-lastRun; since>15000?refresh():schedule(pollInterval()-since);
 });
 window.addEventListener("online",()=>{log("online");if(!inFlight)refresh();});
 async function checkVersion(){
