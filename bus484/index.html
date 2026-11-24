@@ -32,6 +32,7 @@
 <body>
 <div id="map"></div>
 <div id="panel">
+  <div id="upd" style="display:none;background:#fff3cd;border:1px solid #c90;padding:6px;margin-bottom:6px;font-size:13px"></div>
   <div id="ver"></div>
   <div id="status">Loading…</div>
   <div id="buses"></div>
@@ -43,8 +44,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
-const VERSION = "v5";
-const BUILD = "2026-11-24T16:29:27Z";   // UTC time this file was built/pushed
+const VERSION = "v6";
+const BUILD = "2026-11-24T16:35:25Z";   // UTC time this file was built/pushed
 const PAGE_LOADED = Date.now();
 const LOG = [];
 function log(msg){
@@ -285,9 +286,25 @@ document.addEventListener("visibilitychange",()=>{
 window.addEventListener("online",()=>{ log("browser online"); if(!inFlight) refresh(); });
 window.addEventListener("offline",()=>log("browser offline"));
 
+// new-version check: version.json is fetched uncached; if it differs, offer a cache-busting reload
+async function checkVersion(){
+  try{
+    const res=await fetch("version.json?t="+Date.now(),{cache:"no-store"});
+    if(!res.ok){ log("version check: HTTP "+res.status); return; }
+    const v=(await res.json()).version;
+    if(v && v!==VERSION){
+      log(`version check: server has ${v}, running ${VERSION}`);
+      const u=$("upd"); u.style.display="block";
+      u.innerHTML=`New version ${esc(v)} available (you have ${VERSION}). <button onclick="location.replace(location.pathname+'?v='+encodeURIComponent('${esc(v)}'))">Reload</button>`;
+    }
+  }catch(e){ log("version check failed: "+e.message); }
+}
+setInterval(checkVersion, 5*60000);
+
 drawStops();
 refresh();
 loadStops();
+checkVersion();
 </script>
 </body>
 </html>
