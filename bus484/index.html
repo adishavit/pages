@@ -13,6 +13,9 @@
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg);-webkit-tap-highlight-color:transparent}
 #map{position:absolute;inset:0}
+/* no text selection / long-press callout on touch UI (it disturbs dragging and the lens); the debug log and inputs stay selectable */
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#dbg,input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 button{font:inherit;color:inherit;cursor:pointer}
 /* top bar */
 #top{position:absolute;z-index:1000;top:calc(8px + env(safe-area-inset-top));left:8px;right:8px;display:flex;gap:6px;align-items:center;pointer-events:none}
@@ -172,8 +175,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v34";
-const BUILD="2026-11-24T20:07:59Z";
+const VERSION="v35";
+const BUILD="2026-11-24T20:09:55Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
