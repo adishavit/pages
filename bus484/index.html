@@ -77,14 +77,27 @@ async function loadStops(){
   try{
     // newest ride of this line's route today -> its stops
     const today = new Date().toLocaleDateString("sv",{timeZone:"Asia/Jerusalem"});
-    const rt = await (await fetch(`${API}/gtfs_routes/list?route_short_name=484&date_from=${today}&date_to=${today}&limit=10`)).json();
+    const rt = await getJSON("routes",`${API}/gtfs_routes/list?route_short_name=484&date_from=${today}&date_to=${today}&limit=10`);
     const route = rt.find(r=>r.line_ref===LINE_REF);
     if(!route) return;
-    const rides = await (await fetch(`${API}/gtfs_rides/list?gtfs_route_id=${route.id}&limit=1&order_by=start_time%20desc`)).json();
+    const rides = await getJSON("rides",`${API}/gtfs_rides/list?gtfs_route_id=${route.id}&limit=1&order_by=start_time%20desc`);
     if(!rides.length) return;
-    const rs = await (await fetch(`${API}/gtfs_ride_stops/list?gtfs_ride_ids=${rides[0].id}&limit=200&order_by=stop_sequence%20asc`)).json();
+    const rs = await getJSON("stops",`${API}/gtfs_ride_stops/list?gtfs_ride_ids=${rides[0].id}&limit=200&order_by=stop_sequence%20asc`);
     if(rs.length>3) stops = rs.map(r=>[r.stop_sequence,r.gtfs_stop__name,r.gtfs_stop__lat,r.gtfs_stop__lon]);
   }catch(e){ /* keep built-in stops */ }
+}
+
+async function getJSON(label,url,ms=20000){
+  const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),ms);
+  try{
+    const res=await fetch(url,{signal:ctl.signal});
+    if(!res.ok) throw new Error(`${label}: HTTP ${res.status}`);
+    return await res.json();
+  }catch(e){
+    if(e.name==="AbortError") throw new Error(`${label}: timed out after ${ms/1000}s`);
+    if(e instanceof TypeError) throw new Error(`${label}: ${e.message} (network error or blocked by CORS)`);
+    throw e;
+  }finally{clearTimeout(t);}
 }
 
 function dist(a,b,c,d){const R=6371e3,t=Math.PI/180,dl=(c-a)*t,dn=(d-b)*t;
@@ -96,9 +109,8 @@ async function refresh(){
     const from = new Date(Date.now()-WINDOW_MIN*60000).toISOString();
     const url = `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${LINE_REF}`+
       `&recorded_at_time_from=${encodeURIComponent(from)}&order_by=${encodeURIComponent("recorded_at_time desc")}&limit=200`;
-    const res = await fetch(url);
-    if(!res.ok) throw new Error("HTTP "+res.status);
-    const rows = await res.json();
+    st.className=""; st.textContent="Fetching live positions…";
+    const rows = await getJSON("positions",url);
     // keep newest fix per vehicle (field name for vehicle assumed: siri_ride__vehicle_ref; falls back to ride id)
     const latest = new Map();
     for(const r of rows){
@@ -129,12 +141,13 @@ async function refresh(){
       : `No fixes for line 484 (→Mevaseret) in the last ${WINDOW_MIN} min · checked ${t} <button onclick="refresh()">Refresh now</button>`;
   }catch(e){
     st.className = "err";
-    st.innerHTML = `Could not load live data: ${e.message}. Will retry in 60s. <button onclick="refresh()">Retry</button>`;
+    st.innerHTML = `Could not load live data: ${e.name}: ${e.message}. Will retry in 60s. <button onclick="refresh()">Retry</button>`;
   }
 }
 
 drawStops();
-loadStops().then(()=>{drawStops(); refresh();});
+refresh();
+loadStops().then(drawStops);
 setInterval(refresh, REFRESH_MS);
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) refresh(); });
 </script>
