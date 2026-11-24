@@ -125,15 +125,40 @@ tr.past td{color:var(--mut)}
 #updBtn{background:#1565c0;color:#fff;border:0;border-radius:999px;padding:6px 14px;margin-left:8px;font-weight:600;font-size:13px}
 #toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,286px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 #toast.on{opacity:.95}
+/* freshness pill */
+.pill{display:inline-block;border-radius:999px;padding:0 7px;font-weight:600;font-size:11px;line-height:17px;color:#fff;background:var(--old)}
+.pill.ok{background:var(--live)}.pill.warn{background:var(--warn)}.pill.bad{background:var(--late)}
+#heroAge{white-space:nowrap}#heroAge .ver{opacity:.7}
+/* first-run hint: stations pulse until a stop is chosen */
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(21,101,192,.55)}50%{box-shadow:0 0 0 5px rgba(21,101,192,0)}}
+#strip.pick .sd{animation:pulse 1.6s ease-in-out infinite}
+.card.hint{border:1px dashed var(--acc)}
+/* my-stop board */
+.brow{display:flex;align-items:center;gap:12px;padding:8px 2px;border-bottom:1px solid var(--line)}
+.bmin{min-width:64px;font-size:24px;font-weight:800;line-height:1}.bmin small{font-size:13px;font-weight:600}
+.binfo{font-size:13px;line-height:1.45;min-width:0}
+.sub{font-size:13px;margin:16px 0 4px;color:var(--mut);font-weight:600}
+/* line picker */
+#pick{position:absolute;z-index:1004;top:calc(52px + env(safe-area-inset-top));left:8px;right:8px;max-height:65vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:10px 12px 12px}
+#pick[hidden]{display:none}
+#pick .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:15px}
+#pick input{width:150px}
+#btnDir{max-width:34vw;overflow:hidden;text-overflow:ellipsis;font-weight:600}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="top">
   <button id="lineChip" class="chip" title="Change line">Loading…</button>
-  <button id="btnDir" class="chip icon" title="Switch direction">⇅</button>
+  <button id="btnDir" class="chip" title="Switch direction" aria-label="Switch direction">⇅</button>
   <button id="btnFit" class="chip icon" title="Whole route">⤢</button>
   <button id="btnMe" class="chip icon" title="My location">📍</button>
+</div>
+<div id="pick" class="set" hidden>
+  <div class="hd"><b>Choose a line</b><button id="pickX" class="chip icon" aria-label="Close">✕</button></div>
+  <form id="lineForm"><input id="lineIn" inputmode="numeric" placeholder="Line number, e.g. 480" aria-label="Line number"> <button class="btn">Find</button></form>
+  <div id="lineOpts"></div>
+  <div id="recentWrap"><h3>Recent</h3><div id="recent"></div></div>
 </div>
 <div id="upd"></div>
 <div id="toast"></div>
@@ -146,18 +171,17 @@ tr.past td{color:var(--mut)}
     <div id="heroNext"></div>
   </div>
   <div id="tabs">
-    <button data-t="buses" class="sel">Buses</button><button data-t="line">Line</button><button data-t="deps">Departures</button><button data-t="set" aria-label="Settings" title="Settings"><svg class="gear" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94 7.07 7.07 0 0 0-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.56-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0-.06.94c0 .32.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.5.38 1.04.7 1.63.94l.36 2.54c.05.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.59-.24 1.13-.56 1.63-.94l2.39.96c.22.08.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg></button>
+    <button data-t="stop" class="sel">My stop</button><button data-t="buses">Buses</button><button data-t="line">Line</button><button data-t="set" aria-label="Settings" title="Settings"><svg class="gear" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94 7.07 7.07 0 0 0-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.56-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0-.06.94c0 .32.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.5.38 1.04.7 1.63.94l.36 2.54c.05.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.59-.24 1.13-.56 1.63-.94l2.39.96c.22.08.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg></button>
   </div>
   <div id="panes">
-    <div class="pane sel" id="p-buses"><div id="buses"></div></div>
+    <div class="pane sel" id="p-stop"><div id="board"></div><div class="sub" id="depsHd">Timetable</div><div id="deps"></div></div>
+    <div class="pane" id="p-buses"><div id="buses"></div></div>
     <div class="pane" id="p-line"><div id="traffic"></div><div class="mut" style="font-size:12px">Tap a station to make it your stop.</div><div id="diagram"></div></div>
-    <div class="pane" id="p-deps"><div id="deps"></div></div>
     <div class="pane set" id="p-set">
       <h3>Map style</h3>
       <select id="mapStyle" style="font:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);max-width:100%"></select>
       <h3>Line</h3>
-      <form id="lineForm"><input id="lineIn" inputmode="numeric" placeholder="e.g. 480"> <button class="btn">Find</button></form>
-      <div id="lineOpts"></div>
+      <div class="mut" style="font-size:12px">Tap the line name at the top to change line.</div>
       <h3>Prediction accuracy <button class="chip" id="accReset" style="font-size:12px;padding:3px 10px">Reset</button></h3>
       <div id="accTable"></div>
       <h3>Traffic probes</h3>
@@ -176,8 +200,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v41";
-const BUILD="2026-11-24T20:23:48Z";
+const VERSION="v42";
+const BUILD="2026-11-24T20:35:44Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -950,6 +974,7 @@ function renderDiagram(model,preds){
   el.innerHTML=h;
 }
 function renderDeps(model){
+  if($("depsHd")) $("depsHd").innerHTML=stops.length?`Timetable · departures from <span class="rtl">${esc(shortName(stops[0].name))}</span>`:"Timetable";
   const el=$("deps"); if(!rides.length){el.innerHTML=`<div class="card mut">No timetable for today.</div>`;return;}
   const now=Date.now(), s=myStop(), byStart=new Map(model.filter(b=>b.start!=null).map(b=>[b.start,b]));
   const rows=rides.map(r=>({st:Date.parse(r.start_time),end:Date.parse(r.end_time)}));
@@ -961,9 +986,43 @@ function renderDeps(model){
     h+=`<tr class="${r.end<now&&!b?"past":""}"><td><b>${hm(r.st)}</b></td>${s?`<td>${atMine?hm(atMine):""}</td>`:""}<td>${status}</td></tr>`;}
   el.innerHTML=h+`</table>`;
 }
+// my-stop board: next buses at my stop, live and scheduled, clearly marked
+function renderBoard(model){
+  const el=$("board"); if(!el) return;
+  if(!stops.length){el.innerHTML="";return;}
+  const s=myStop();
+  if(!s){el.innerHTML=`<div class="card hint">👆 <b>Tap your station</b> on the line above (or in the Line tab) to see when the next buses get there.</div>`;return;}
+  const p=myStopPredictions(model).slice(0,6), now=Date.now(), bym=new Map(model.map(b=>[b.ref,b])), org=shortName(stops[0].name);
+  if(!p.length){const ns=nextServiceText();
+    el.innerHTML=`<div class="card">No more ${esc(title.num)} buses today at <span class="rtl">${esc(s.name)}</span>.${ns?`<br>${ns}`:""}</div>`;return;}
+  let h="";
+  for(const x of p){
+    const b=x.ref?bym.get(x.ref):null, m=Math.max(0,Math.round((x.t-now)/60000));
+    const st=b&&b.start!=null?b.start:x.ref?startOf(x.ref):x.t-(s.off||0)*1000;
+    const badge=x.src==="tt"?`<span class="badge b-old">scheduled</span>`:b?(b.live?`<span class="badge b-live">live</span>`:`<span class="badge b-str">recent</span>`):`<span class="badge b-str">expected</span>`;
+    const from=st!=null?`${st>now?"Leaves":"Left"} <span class="rtl">${esc(org)}</span> ${hm(st)}`:"";
+    h+=`<div class="brow"><div class="bmin">${m===0?"now":`${m}<small> min</small>`}</div>
+      <div class="binfo"><div><b>${hm(x.t)}</b> ${badge} ${b?delayHtml(b):""}</div><div class="mut">${from}</div></div></div>`;
+  }
+  el.innerHTML=h;
+}
+// freshness pill: how old is the position behind the main prediction
+function renderFresh(){
+  const el=$("heroAge"); if(!el) return;
+  let cls="", txt;
+  if(refreshErr){cls="bad";txt="offline · retrying";}
+  else if(!okCount&&!lastModel.length){txt="loading";}
+  else{ const fb=focusBus(lastModel), act=lastModel.filter(b=>!b.stale);
+    const t=fb&&!fb.stale?tms(fb.r):act.length?Math.max(...act.map(b=>tms(b.r))):null;
+    if(t==null) txt="no buses on the road";
+    else{ const a=Math.max(0,(Date.now()-t)/1000), ag=a<60?`${Math.round(a)} s`:`${Math.round(a/60)} min`;
+      cls=a<=150?"ok":a<=STALE_MIN*60?"warn":"bad"; txt=(cls==="ok"?"live · ":"position ")+ag+" old"; } }
+  el.innerHTML=`<span class="pill ${cls}">● ${txt}</span> <span class="ver">${VERSION}${lastRun?` · updated ${hm(lastRun)}`:""}</span>`;
+}
+function dirPick(){const o=dirOptions(); return o.length?(o.find(r=>route&&r.route_alternative===route.route_alternative)||o[0]):null;}
 function renderHero(model){
   const s=myStop();
-  $("heroStop").innerHTML=s?`My stop: <span class="rtl"><b>${esc(s.name)}</b></span>`:"Tap a station to choose your stop";
+  $("heroStop").innerHTML=s?`My stop: <span class="rtl"><b>${esc(s.name)}</b></span>`:"👆 <b>Tap your station</b> on the line above";
   if(!s){$("heroMin").textContent="–";$("heroTxt").textContent="";$("heroNext").textContent="";return;}
   const p=myStopPredictions(model);
   if(!p.length){ const loading=(refreshErr||!rides.length)&&!lastModel.length;
@@ -977,28 +1036,42 @@ function renderHero(model){
 function renderTitle(){
   $("lineChip").innerHTML=`<span class="num">${esc(title.num)}</span><bdi>${esc(title.from||"")}</bdi>${title.to?` → <bdi>${esc(title.to)}</bdi>`:""}`;
   document.title=`${title.num} ${title.to?"→ "+title.to:""} · live`;
-  $("btnDir").style.display=dirOptions().length?"":"none";
+  const pk=dirPick(), bd=$("btnDir"); bd.style.display=pk?"":"none";
+  if(pk){const to=prettyRoute(pk).to||""; bd.innerHTML=`⇅ <bdi>${esc(to)}</bdi>`; bd.title=`Switch direction: to ${to}`; bd.setAttribute("aria-label",bd.title);}
+  rememberLine();
 }
+// recent lines (for the picker); may not persist in browsers that drop localStorage
+const RECENT_KEY="recentLines";
+function recentLines(){try{return JSON.parse(load(RECENT_KEY)||"[]");}catch(_){return [];}}
+function rememberLine(){
+  if(!REF||!title.to) return; const k=`${LINE}|${REF}|${title.from}|${title.to}`; if(rememberLine.k===k) return; rememberLine.k=k;
+  const l=recentLines().filter(r=>String(r.ref)!==String(REF)); l.unshift({line:LINE,ref:REF,from:title.from,to:title.to}); store(RECENT_KEY,JSON.stringify(l.slice(0,6)));
+}
+function renderRecent(){
+  const l=recentLines().filter(r=>String(r.ref)!==String(REF)); $("recentWrap").style.display=l.length?"":"none";
+  $("recent").innerHTML=l.map(r=>`<button class="opt" data-ref="${esc(r.ref)}" data-line="${esc(r.line)}"><b>${esc(r.line)}</b> <bdi>${esc(r.from)}</bdi> → <bdi>${esc(r.to)}</bdi></button>`).join("");
+}
+let pickOpts=null;
 function renderLineOpts(){
-  const el=$("lineOpts"); if(!routeOpts.length){el.innerHTML="";return;}
-  el.innerHTML=routeOpts.map(r=>{const p=prettyRoute(r);return `<button class="opt${r.line_ref===REF?" cur":""}" data-ref="${r.line_ref}" data-line="${esc(r.route_short_name)}">
+  const el=$("lineOpts"), list=pickOpts||routeOpts; if(!list.length){el.innerHTML="";return;}
+  el.innerHTML=list.map(r=>{const p=prettyRoute(r);return `<button class="opt${r.line_ref===REF?" cur":""}" data-ref="${r.line_ref}" data-line="${esc(r.route_short_name)}">
     <b>${esc(r.route_short_name)}</b> ${esc(p.from)} → ${esc(p.to)} <span class="mut">· ${esc(r.agency_name)} · dir ${esc(r.route_direction)}${r.route_alternative&&r.route_alternative!=="0"?" alt "+esc(r.route_alternative):""}</span></button>`;}).join("");
   renderTitle();
 }
 let lastModel=[];
 function render(){
   const model=buildModel(); lastModel=model;
-  renderMap(model); renderCards(model); renderDiagram(model); renderDeps(model); renderHero(model); renderTitle(); renderTraffic(); renderAccuracy(); renderStrip(model);
+  renderMap(model); renderCards(model); renderDiagram(model); renderDeps(model); renderBoard(model); renderHero(model); renderTitle(); renderTraffic(); renderAccuracy(); renderStrip(model); renderFresh();
+  $("strip").classList.toggle("pick",!myStop()&&stops.length>0);
   $("probeInfo").textContent=(probeInfo||"not run yet")+(probeAt?` · last run ${hm(probeAt)}`:"");
   const st=$("status"), lag=newestMs?Math.round((Date.now()-newestMs)/60000):null;
   const lv=liveState==="ok"||liveState==="ok-warn"?"live":liveState==="untried"?"":"live positions unavailable";
   st.className=(liveState!=="ok"&&liveState!=="ok-warn"&&liveState!=="untried")?"err":"";
-  if(!okCount&&!refreshErr&&!model.length){st.className="";st.textContent="Waiting for bus data…";$("heroAge").textContent=VERSION;return;}
-  else if(refreshErr){st.className="err";st.textContent=`Can't reach the bus data right now · retrying`;$("heroAge").textContent=VERSION;return;}
+  if(!okCount&&!refreshErr&&!model.length){st.className="";st.textContent="Waiting for bus data…";return;}
+  else if(refreshErr){st.className="err";st.textContent=`Can't reach the bus data right now · retrying`;return;}
   const active=model.filter(b=>!b.stale);
   st.innerHTML=active.length?`${active.length} bus${active.length===1?"":"es"} on the road · positions from ${hm(Math.max(...active.map(b=>tms(b.r))))}${lv?` · ${lv}`:""}`
                             :`No ${esc(title.num)} buses on the road right now`;   // details in ⚙︎ debug log
-  $("heroAge").textContent=`${VERSION}${lastRun?` · updated ${hm(lastRun)}`:""}`;
 }
 
 // ---------- subway-style strip: one line, stations spaced by sqrt(planned minutes) ----------
@@ -1134,9 +1207,10 @@ async function refresh(){
   finally{inFlight=false;render();if(!document.hidden)schedule(pollInterval());}
 }
 setInterval(()=>{ // ticking clocks + countdown
+  if(!document.hidden) renderFresh();
   $("ver").textContent=`${VERSION} · built ${BUILD} (${fmtAge((Date.now()-Date.parse(BUILD))/1000)} ago) · opened ${fmtAge((Date.now()-PAGE_LOADED)/1000)} ago · ok ${okCount}/fail ${failCount}${inFlight?" · fetching…":nextAt?` · next in ${Math.max(0,Math.round((nextAt-Date.now())/1000))}s`:""} · relay ${LIVE_BASE.replace(/^https?:\/\//,"")}`;
 },1000);
-setInterval(()=>{ if(!document.hidden) renderHero(lastModel.length?buildModel():lastModel); },15000);
+setInterval(()=>{ if(!document.hidden){ const m=lastModel.length?buildModel():lastModel; renderHero(m); renderBoard(m);} },15000);
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden){clearTimeout(timer);nextAt=0;log("hidden: paused");return;}
   log("visible"); if(inFlight) return; const since=Date.now()-lastRun; since>15000?refresh():schedule(pollInterval()-since);
@@ -1198,17 +1272,21 @@ $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r
     lensAnim=requestAnimationFrame(shrink); };
   el.addEventListener("pointerup",release); el.addEventListener("pointercancel",release);
 })();
-$("lineChip").addEventListener("click",()=>{$("tabs").querySelector('[data-t="set"]').click();setSheet(Math.max(sheetIdx,1));});
+function openPicker(on){ const el=$("pick"); el.hidden=!on; if(on){pickOpts=null; renderLineOpts(); renderRecent();} }
+$("lineChip").addEventListener("click",()=>openPicker($("pick").hidden));
+$("pickX").addEventListener("click",()=>openPicker(false));
+$("recent").addEventListener("click",e=>{const b=e.target.closest(".opt");if(b)switchTo(b.dataset.ref,b.dataset.line);});
+if(HAVE_MAP) map.on("click",()=>openPicker(false));
 $("btnFit").addEventListener("click",fitRoute);
 (function(){const sel=$("mapStyle"); sel.innerHTML=Object.entries(STYLES).map(([k,v])=>`<option value="${k}">${esc(v.name)}</option>`).join(""); sel.value=MAP_STYLE;
   sel.addEventListener("change",()=>setMapStyle(sel.value));})();
 $("accReset").addEventListener("click",()=>{acc={};store(ACC_KEY,null);renderAccuracy();toast("Accuracy stats reset");});
-$("btnDir").addEventListener("click",()=>{const o=dirOptions();if(!o.length){toast("No other direction found");return;}
-  const pick=o.find(r=>r.route_alternative===route.route_alternative)||o[0];switchTo(pick.line_ref,pick.route_short_name);});
+$("btnDir").addEventListener("click",()=>{const pick=dirPick();if(!pick){toast("No other direction found");return;}
+  switchTo(pick.line_ref,pick.route_short_name);});
 $("lineOpts").addEventListener("click",e=>{const b=e.target.closest(".opt");if(b)switchTo(b.dataset.ref,b.dataset.line);});
 $("lineForm").addEventListener("submit",async e=>{e.preventDefault();const n=$("lineIn").value.trim();if(!n)return;
   const d=todayIL();try{const rt=await getJSON("routes",`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(n)}&date_from=${d}&date_to=${d}&limit=50`);
-    if(!rt.length){toast(`No line ${n} today`);return;} routeOpts=rt; renderLineOpts();}catch(err){toast("Search failed");}});
+    if(!rt.length){toast(`No line ${n} today`);return;} pickOpts=rt; renderLineOpts();}catch(err){toast("Search failed");}});
 $("copyLog").addEventListener("click",()=>{const txt=$("ver").textContent+"\n"+LOG.join("\n");
   const sel=()=>{const r=document.createRange();r.selectNodeContents($("dbg"));const w=getSelection();w.removeAllRanges();w.addRange(r);toast("Selected: use Copy");};
   try{navigator.clipboard.writeText(txt).then(()=>toast("Log copied"),sel);}catch(_){sel();}});
@@ -1234,7 +1312,7 @@ setSheet(0);
   if(REF===19094){useBuiltin();drawStops();renderTitle();render();refresh();}   // known line: draw at once, start polling
   await loadLine(); setUrl(); drawStops(); render(); await loadRoad(); loadStopZones(); fetchProbes();
   if(!okCount&&!inFlight) refresh();
-  if(!rides.length&&!stops.length){$("heroTxt").textContent=`Line ${LINE} not found today. Use ⚙︎ to pick a line.`;}
+  if(!rides.length&&!stops.length){$("heroTxt").textContent=`Line ${LINE} not found today. Tap the line name at the top to pick another.`;}
   checkVersion();
 })();
 </script>
