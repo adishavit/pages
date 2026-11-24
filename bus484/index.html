@@ -22,6 +22,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 #top>*{pointer-events:auto}
 .chip{background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:7px 12px;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:14px;white-space:nowrap}
 #lineChip{flex:1;min-width:0;display:flex;align-items:center;text-align:left;font-weight:600;padding-right:0}
+.rt{font-weight:600}
 #lineChip .lt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #swap{flex:0 0 auto;display:grid;place-items:center;width:40px;align-self:stretch;margin:-7px 0 -7px 6px;border-left:1px solid var(--line);color:var(--acc);border-radius:0 999px 999px 0}
 #swap:active{background:var(--card)}
@@ -201,8 +202,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v47";
-const BUILD="2026-11-24T20:46:14Z";
+const VERSION="v48";
+const BUILD="2026-11-24T20:48:46Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1034,7 +1035,8 @@ function renderHero(model){
   $("heroNext").innerHTML=p.slice(1,3).length?"Then: "+p.slice(1,3).map(x=>hm(x.t)).join(", "):"";
 }
 // route as one right-to-left Hebrew phrase: origin ← destination (destination emphasised, no English in between)
-function routeHtml(from,to){ return `<bdi dir="rtl">${from?`<span class="mut" style="font-weight:400">${esc(from)}</span> ← `:""}<b>${esc(to||"")}</b></bdi>`; }
+// one weight for both names: on iOS Hebrew falls back to a font whose bold looks smaller than its regular
+function routeHtml(from,to){ return `<bdi dir="rtl" class="rt">${from?`<span class="mut">${esc(from)}</span> ← `:""}<span>${esc(to||"")}</span></bdi>`; }
 function dirPick(){const o=dirOptions(); return o.length?(o.find(r=>route&&r.route_alternative===route.route_alternative)||o[0]):null;}
 function renderTitle(){
   const txt=title.to?`<span class="num">${esc(title.num)}</span>${routeHtml(title.from,title.to)}`
