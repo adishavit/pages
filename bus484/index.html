@@ -55,8 +55,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
-const VERSION = "v9";
-const BUILD = "2026-11-24T17:49:45Z";   // UTC time this file was built/pushed
+const VERSION = "v10";
+const BUILD = "2026-11-24T17:52:10Z";   // UTC time this file was built/pushed
 const PAGE_LOADED = Date.now();
 const LOG = [];
 function log(msg){
@@ -291,17 +291,26 @@ async function fetchPositions(){
 }
 // curlbus fails on multi-stop requests ("a+b"), so query a few stops one by one.
 // A SIRI stop query returns buses heading to that stop, so stops spread along the route (ending at the terminus) cover the trip.
-const LIVE_STOP_SEQ = [5, 7, 8, 10, 12];   // Karliback, Kibbutz Galuyot/Route 1, Shoresh, Harel, Sport Center (terminus)
+// Every refresh: terminus + Shoresh (together they see buses heading out of TLV and on the highway),
+// plus one rotating stop. Max 2 requests at a time, generous timeout: curlbus is a slow hobby server.
+const LIVE_FIXED = [12, 8], LIVE_ROTATE = [5, 7, 10];
+let liveTurn = 0, liveLastErr = "";
 function parseTs(x){ const t=Date.parse(String(x||"").replace(" ","T")); return Number.isFinite(t)?t:NaN; }
 async function fetchLive(){
   if(Date.now()<liveRetryAt) return null;
-  const codes=LIVE_STOP_SEQ.map(q=>stops.find(s=>s[0]===q)).filter(s=>s&&s[4]).map(s=>s[4]);
+  const seqs=[...LIVE_FIXED, LIVE_ROTATE[liveTurn++ % LIVE_ROTATE.length]];
+  const codes=seqs.map(q=>stops.find(s=>s[0]===q)).filter(s=>s&&s[4]).map(s=>s[4]);
   if(!codes.length){ log("live: no stop codes"); return null; }
-  const res=await Promise.allSettled(codes.map(c=>getJSON(`live-${c}`,`${LIVE_BASE}/${c}`,15000,false,{Accept:"application/json"})));
+  const res=[];
+  for(let i=0;i<codes.length;i+=2){   // at most 2 in flight
+    const part=await Promise.allSettled(codes.slice(i,i+2).map(c=>getJSON(`live-${c}`,`${LIVE_BASE}/${c}`,25000,false,{Accept:"application/json"})));
+    res.push(...part);
+  }
   const okRes=res.filter(r=>r.status==="fulfilled").map(r=>r.value);
   const fails=res.filter(r=>r.status==="rejected").map(r=>r.reason.message);
   if(!okRes.length){
     liveState=fails.some(m=>/CORS|network/.test(m))?"blocked":"error";
+    liveLastErr=fails[0]||"";
     liveRetryAt=Date.now()+2*60000;
     log(`live source ${liveState}: all ${codes.length} stop queries failed (${fails[0]}). Stride only; retry in 2 min.`);
     return null;
@@ -327,7 +336,7 @@ async function fetchLive(){
   }
   const out=[...best.values()];
   log(`live: ${total} visits from ${okRes.length} stops; 484 →Mevaseret: ${out.length} with position, ${noLoc} without (not yet departed)`);
-  liveState="ok"; liveOkMs=Date.now();
+  liveState="ok"; liveOkMs=Date.now(); liveLastErr=fails.length?`${fails.length}/${codes.length} stops failed`:"";
   return out;
 }
 
@@ -432,7 +441,7 @@ async function refresh(){
     const lag = newestMs ? ((Date.now()-newestMs)/60000).toFixed(0) : null;
     log(`refresh ok: ${rows.length} rows, ${added} new, ${n} vehicles, newest=${newestMs?new Date(newestMs).toISOString():"-"}`);
     st.innerHTML = (n
-      ? `<b>${n} bus(es)</b> · data as of ${hhmm(newestMs)} (<b>${lag} min behind now</b>) · live feed: ${liveState==="ok"?"✅":liveState==="untried"?"…":"❌ "+liveState+" (Stride only)"}`
+      ? `<b>${n} bus(es)</b> · data as of ${hhmm(newestMs)} (<b>${lag} min behind now</b>) · live feed: ${liveState==="ok"?"✅":liveState==="untried"?"…":"❌ "+liveState+" (Stride only)"}${liveLastErr?` <small>[${esc(liveLastErr)}]</small>`:""} · relay: ${esc(LIVE_BASE.replace(/^https?:\/\//,""))}`
       : `No buses on line 484 (→Mevaseret) in the last ${KEEP_MIN} min of data${newestMs?` · data as of ${hhmm(newestMs)}`:""}`)
       + ` · checked ${hhmm(Date.now())} <button onclick="refresh()">Refresh now</button>`;
   }catch(e){
