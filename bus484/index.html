@@ -214,8 +214,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v53";
-const BUILD="2026-11-24T21:27:12Z";
+const VERSION="v54";
+const BUILD="2026-11-24T22:02:45Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -291,17 +291,28 @@ function useBuiltin(){
   title={num:"484",from:BUILTIN_19094.from,to:BUILTIN_19094.to};
 }
 const todayIL=()=>new Date().toLocaleDateString("sv",{timeZone:TZ});
+const dayIL=k=>new Date(Date.now()+k*86400000).toLocaleDateString("sv",{timeZone:TZ});
+// Open Bus publishes each day's timetable some time after midnight. Until then, use the most recent comparable day
+// (Sun–Thu: latest earlier Sun–Thu; Fri/Sat: same day last week), times shifted to today.
+let ttDate=null, ttShift=0;
+function fallbackDays(){ const wd=new Date(todayIL()+"T12:00:00Z").getUTCDay();   // 0 Sun … 6 Sat
+  if(wd===5||wd===6) return [7];
+  const out=[]; for(let k=1;k<=7;k++){ const w=(wd-k+7)%7; if(w<=4) out.push(k); } return out; }
 const jnum=j=>String(j||"").split("_")[0];       // journey ref without its date suffix
 async function loadLine(){
   if(REF===19094) useBuiltin();
-  const d=todayIL();
+  const d=todayIL(); ttDate=d; ttShift=0;
   try{
-    const rt=await getJSON("routes",`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${d}&date_to=${d}&limit=50`);
+    let rt=await getJSON("routes",`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${d}&date_to=${d}&limit=50`);
+    if(!rt.length){ for(const k of fallbackDays()){ const dd=dayIL(-k);
+        rt=await getJSON("routes-"+dd,`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dd}&date_to=${dd}&limit=50`);
+        if(rt.length){ ttDate=dd; ttShift=k; log(`no timetable for ${d} yet: using ${dd}, shifted ${k} day(s)`); break; } } }
     routeOpts=rt;
     route=rt.find(r=>r.line_ref===REF)||(!REF?rt[0]:null);
     if(!route){ log(`line_ref ${REF} not in today's routes for ${LINE}`); renderLineOpts(); return; }
     REF=route.line_ref;
     rides=(await getJSON("rides",`${API}/gtfs_rides/list?gtfs_route_id=${route.id}&limit=200`)).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time));
+    if(ttShift){ const sh=t=>t?new Date(Date.parse(t)+ttShift*86400000).toISOString():t; rides=rides.map(r=>({...r,start_time:sh(r.start_time),end_time:sh(r.end_time)})); }
     log(`rides today: ${rides.length}`);
     if(!rides.length){ renderLineOpts(); return; }
     const ref=rides[Math.floor(rides.length/2)];   // a mid-day ride as the timing reference
@@ -579,7 +590,7 @@ const intermediateStops=()=>stops.slice(1,-1);
 let zoneStops=[], zoneAlong=[];
 async function loadStopZones(){
   const cities=[...new Set(stops.map(s=>s.city).filter(Boolean))]; if(!cities.length) return;
-  const d=todayIL(), all=[];
+  const d=ttDate||todayIL(), all=[];
   for(const c of cities){ try{ all.push(...await getJSON("stops-"+c,`${API}/gtfs_stops/list?date_from=${d}&date_to=${d}&city=${encodeURIComponent(c)}&limit=5000`,30000)); }catch(e){ log("stop zones: "+e.message); } }
   zoneStops=all.filter(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lon)).map(s=>({lat:s.lat,lon:s.lon}));
   computeZones(); log(`stop zones: ${zoneAlong.length} stops on the route (from ${all.length} in ${cities.length} cities)`);
@@ -1133,6 +1144,7 @@ function render(){
   const active=model.filter(b=>!b.stale);
   st.innerHTML=active.length?`${active.length} bus${active.length===1?"":"es"} on the road · positions from ${hm(Math.max(...active.map(b=>tms(b.r))))}${lv?` · ${lv}`:""}`
                             :`No ${esc(title.num)} buses on the road right now`;   // details in ⚙︎ debug log
+  if(ttShift) st.innerHTML+=` · <span title="Today's timetable isn't published yet">timetable from ${esc(ttDate)}</span>`;
 }
 
 // ---------- subway-style strip: one line, stations spaced by sqrt(planned minutes) ----------
