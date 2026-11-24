@@ -143,6 +143,13 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 .brow{display:flex;align-items:center;gap:12px;padding:8px 2px;border-bottom:1px solid var(--line)}
 .bmin{min-width:64px;font-size:24px;font-weight:800;line-height:1}.bmin small{font-size:13px;font-weight:600}
 .binfo{font-size:13px;line-height:1.45;min-width:0}
+.brow.gone{opacity:.6}.brow.gone .bmin{font-size:20px;color:var(--ok)}
+.nowln{position:relative;text-align:center;margin:6px 0;font-size:11px;color:var(--acc);font-weight:700}
+.nowln::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:2px solid var(--acc)}
+.nowln span{position:relative;background:var(--bg);padding:0 8px;text-transform:uppercase;letter-spacing:.05em}
+.sbus.gone{background:var(--bg);color:var(--mut);border:1px solid var(--old);box-shadow:none;opacity:.8}
+.sfix.gone{background:var(--old)}
+.bm.gone{background:#fff;color:#6b6f76;border-color:#9aa0a6;opacity:.85}
 .sub{font-size:13px;margin:16px 0 4px;color:var(--mut);font-weight:600}
 /* line picker */
 #pick{position:absolute;z-index:1004;top:calc(52px + env(safe-area-inset-top));left:8px;right:8px;max-height:65vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:10px 12px 12px}
@@ -207,8 +214,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v50";
-const BUILD="2026-11-24T20:53:41Z";
+const VERSION="v51";
+const BUILD="2026-11-24T21:07:12Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -237,7 +244,7 @@ let REF=+qs.get("ref")||(LINE==="484"?19094:0);
 let MY_STOP=qs.get("stop")||load("mystop:"+LINE+":"+REF)||(REF===19094?"20750":"");   // default Karliback for 484 -> Mevaseret
 let LIVE_BASE=(qs.get("relay")||load("relay484")||"https://shiny-shadow-cc40.adishavit.workers.dev").replace(/\/$/,"");
 if(qs.get("relay")) store("relay484",LIVE_BASE);
-const REFRESH_MS=60000, IDLE_REFRESH_MS=180000, TIMEOUT_MS=30000, LIMIT=500, FIRST_WINDOW_MIN=30, KEEP_MIN=30, STALE_MIN=5;
+const REFRESH_MS=60000, IDLE_REFRESH_MS=180000, TIMEOUT_MS=30000, LIMIT=500, FIRST_WINDOW_MIN=30, KEEP_MIN=30, HISTORY_MIN=90, STALE_MIN=5;   // KEEP: shown on map/cards; HISTORY: kept for "passed my stop" (hourly lines run late)
 log(`start ${VERSION} build=${BUILD} line=${LINE} ref=${REF} stop=${MY_STOP} relay=${LIVE_BASE}`);
 log(`UA: ${navigator.userAgent} | origin=${location.origin} | secure=${window.isSecureContext}`);
 function setUrl(){const p=new URLSearchParams(location.search);if(typeof MAP_STYLE!=="undefined"&&MAP_STYLE!=="voyager")p.set("map",MAP_STYLE);else p.delete("map");p.set("line",LINE);if(REF)p.set("ref",REF);if(MY_STOP)p.set("stop",MY_STOP);else p.delete("stop");p.delete("relay");p.delete("v");
@@ -514,7 +521,7 @@ function merge(rows){
       if(r.siri_ride__journey_ref) vehTrip.set(ref,jnum(r.siri_ride__journey_ref));
     }
   }
-  if(newestMs!==null){const cut=newestMs-KEEP_MIN*60000;
+  if(newestMs!==null){const cut=newestMs-HISTORY_MIN*60000;
     for(const[ref,m]of vehicles){for(const[id,f]of m)if(tms(f)<cut)m.delete(id);if(!m.size)vehicles.delete(ref);}}
   const now=Date.now();
   for(const[vr,m]of liveEta){for(const[c,e]of m)if(now-e.seen>30*60000||e.eta<now-10*60000)m.delete(c);if(!m.size)liveEta.delete(vr);}
@@ -830,7 +837,9 @@ function upcomingEtas(ref){
 function buildModel(){
   const now=Date.now(), out=[];
   for(const[ref,m]of vehicles){
-    const fx=[...m.values()].sort((a,b)=>tms(a)-tms(b)), r=fx[fx.length-1];
+    const all=[...m.values()].sort((a,b)=>tms(a)-tms(b)), r=all[all.length-1];
+    if(newestMs!=null&&newestMs-tms(r)>KEEP_MIN*60000) continue;   // older history is only for "passed my stop"
+    const fx=all.filter(f=>tms(r)-tms(f)<=KEEP_MIN*60000);
     const behind=((r.live?newestMs:(strideNewestMs??newestMs))-tms(r))/60000;
     const silentMin=(now-tms(r))/60000, snEnd=routePts.length>1?snap(r.lat,r.lon).along:0;
     if(snEnd>=routeLen()-300&&silentMin>3) continue;                 // reached the terminus: trip finished
@@ -890,7 +899,7 @@ function myStopPredictions(model){
 
 // ---------- rendering ----------
 function busIcon(b,est){
-  const cls=est?"est":b.stale?"old":b.live?"live":"";
+  const ms=myStop(), cls=(est?"est":b.stale?"old":b.live?"live":"")+(ms&&b.along>ms.along+30?" gone":"");
   const arr=!est&&b.brg!=null&&!b.stale?`<i class="arr" style="transform:rotate(${Math.round(b.brg)}deg)"></i>`:"";
   return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${cls}">${arr}${esc(title.num)}<small>${est?"est.":depLabel(b)}</small></div>`});
 }
@@ -992,21 +1001,55 @@ function renderDeps(model){
     h+=`<tr class="${r.end<now&&!b?"past":""}"><td><b>${hm(r.st)}</b></td>${s?`<td>${atMine?hm(atMine):""}</td>`:""}<td>${status}</td></tr>`;}
   el.innerHTML=h+`</table>`;
 }
-// my-stop board: next buses at my stop, live and scheduled, clearly marked
+// buses that already passed my stop (last 30 min). Pass time is interpolated between the fixes on either side;
+// if those are far apart it is approximate (~); if the bus was only seen after the stop, we only know "before".
+function passedMyStop(){
+  const s=myStop(); if(!s||routePts.length<2||!Number.isFinite(s.along)) return [];
+  const now=Date.now(), out=[];
+  for(const[ref,m]of vehicles){
+    const fx=[...m.values()].sort((a,b)=>tms(a)-tms(b)); if(!fx.length) continue;
+    const sn=f=>f._sn||(f._sn=snap(f.lat,f.lon));
+    let hit=null;
+    for(let k=fx.length-1;k>=1&&!hit;k--){ const a=fx[k-1],b=fx[k],sa=sn(a),sb=sn(b);
+      if(sa.d>200||sb.d>200) continue;
+      if(sa.along<s.along-30&&sb.along>s.along+30){ const dt=tms(b)-tms(a);
+        hit={t:tms(a)+(s.along-sa.along)/Math.max(1,sb.along-sa.along)*dt,approx:dt>3*60000}; } }
+    if(!hit){ const f0=fx[0],s0=sn(f0);      // first seen already past the stop (but not far): passed before that
+      if(s0.d<=200&&s0.along>s.along+30&&s0.along<s.along+4000) hit={t:tms(f0),before:true}; }
+    if(!hit||now-hit.t>HISTORY_MIN*60000||hit.t>now) continue;
+    const last=fx[fx.length-1], la=sn(last).along;
+    const further=stops.filter(x=>x.along>s.along+30&&x.along<=la+30).length;
+    out.push({ref,...hit,further,end:la>=routeLen()-300,live:!!last.live,lastT:tms(last)});
+  }
+  return out.sort((a,b)=>a.t-b.t).slice(-2);           // the last two, oldest first
+}
+function atMyStop(model){ const s=myStop(); if(!s) return null;
+  return model.find(b=>!b.stale&&b.off<200&&Math.abs(b.along-s.along)<=40&&Date.now()-tms(b.r)<3*60000)||null; }
+const stopsAway=(b,s)=>stops.filter(x=>x.along>b.along+30&&x.along<=s.along).length;
+// my-stop board: a timeline around now: buses that passed my stop, NOW, then the buses still coming
 function renderBoard(model){
   const el=$("board"); if(!el) return;
   if(!stops.length){el.innerHTML="";return;}
   const s=myStop();
   if(!s){el.innerHTML=`<div class="card hint">👆 <b>Tap your station</b> on the line above (or in the Line tab) to see when the next buses get there.</div>`;return;}
-  const p=myStopPredictions(model).slice(0,6), now=Date.now(), bym=new Map(model.map(b=>[b.ref,b])), org=shortName(stops[0].name);
-  if(!p.length){const ns=nextServiceText();
-    el.innerHTML=`<div class="card">No more ${esc(title.num)} buses today at <span class="rtl">${esc(s.name)}</span>.${ns?`<br>${ns}`:""}</div>`;return;}
+  const now=Date.now(), bym=new Map(model.map(b=>[b.ref,b])), org=shortName(stops[0].name);
+  const here=atMyStop(model), p=myStopPredictions(model).filter(x=>!here||x.ref!==here.ref).slice(0,6), gone=passedMyStop();
   let h="";
+  for(const g of gone){ const ago=Math.max(0,Math.round((now-g.t)/60000));
+    const tt=g.before?`before ${hm(g.t)}`:`${g.approx?"~":""}${hm(g.t)}`;
+    const fresh=now-g.lastT<=STALE_MIN*60000, n=`${g.further} stop${g.further===1?"":"s"} further`;
+    const where=g.end?"reached the end of the line":!g.further?(fresh?"just past your stop":`last seen ${hm(g.lastT)}`):fresh?`now ${n}`:`last seen ${n} at ${hm(g.lastT)}`;
+    h+=`<div class="brow gone"><div class="bmin">✓</div><div class="binfo"><div>Passed your stop <b>${tt}</b>${g.before?"":` · ${ago} min ago`}</div><div class="mut">${where}</div></div></div>`; }
+  h+=`<div class="nowln"><span>now ${hm(now)}</span></div>`;
+  if(here) h+=`<div class="brow"><div class="bmin">●</div><div class="binfo"><div><b>At your stop now</b> <span class="badge b-live">live</span></div><div class="mut">seen ${hm(tms(here.r))}</div></div></div>`;
+  if(!p.length){const ns=nextServiceText();
+    el.innerHTML=h+`<div class="card">No more ${esc(title.num)} buses today at <span class="rtl">${esc(s.name)}</span>.${ns?`<br>${ns}`:""}</div>`;return;}
   for(const x of p){
     const b=x.ref?bym.get(x.ref):null, m=Math.max(0,Math.round((x.t-now)/60000));
     const st=b&&b.start!=null?b.start:x.ref?startOf(x.ref):x.t-(s.off||0)*1000;
     const badge=x.src==="tt"?`<span class="badge b-old">scheduled</span>`:b?(b.live?`<span class="badge b-live">live</span>`:`<span class="badge b-str">recent</span>`):`<span class="badge b-str">expected</span>`;
-    const from=st!=null?`${st>now?"Leaves":"Left"} <span class="rtl">${esc(org)}</span> ${hm(st)}`:"";
+    const away=b&&!b.stale?stopsAway(b,s):null;
+    const from=[away!=null?(away===0?"arriving":`${away} stop${away===1?"":"s"} away`):"", st!=null?`${st>now?"departs":"departed"} <span class="rtl">${esc(org)}</span> ${hm(st)}`:""].filter(Boolean).join(" · ");
     h+=`<div class="brow"><div class="bmin">${m===0?"now":`${m}<small> min</small>`}</div>
       <div class="binfo"><div><b>${hm(x.t)}</b> ${badge} ${b?delayHtml(b):""}</div><div class="mut">${from}</div></div></div>`;
   }
@@ -1032,11 +1075,15 @@ function renderHero(model){
   const p=myStopPredictions(model);
   if(!p.length){ const loading=(refreshErr||!rides.length)&&!lastModel.length;
     $("heroMin").textContent="–"; $("heroTxt").innerHTML=loading?`Loading…`:`No more ${esc(title.num)} buses today.`;
-    $("heroNext").innerHTML=loading?"":nextServiceText(); return; }
+    $("heroNext").innerHTML=loading?"":nextServiceText(); return; }   // (no "missed" note: nothing else to compare)
   const m=Math.max(0,Math.round((p[0].t-Date.now())/60000));
   $("heroMin").textContent=m===0?"now":m+" min";
   $("heroTxt").innerHTML=`Next <b>${esc(title.num)}</b> at ${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}`;
-  $("heroNext").innerHTML=p.slice(1,3).length?"Then: "+p.slice(1,3).map(x=>hm(x.t)).join(", "):"";
+  const ps=passedMyStop(), g=[...ps].reverse().find(x=>!x.before), gb=ps[ps.length-1], ago=g?Math.round((Date.now()-g.t)/60000):null;
+  const missed=g&&ago<=20?`<span class="${ago<=5?"d-early":""}">${ago<=5?"Just missed one":"Last one"}: passed ${ago<=1?"a minute":ago+" min"} ago</span>`
+              :gb&&gb.before&&Date.now()-gb.t<=20*60000?`One passed before ${hm(gb.t)}`:"";
+  const then=p.slice(1,3).length?"Then: "+p.slice(1,3).map(x=>hm(x.t)).join(", "):"";
+  $("heroNext").innerHTML=[missed,then].filter(Boolean).join(" · ");
 }
 // route as one right-to-left Hebrew phrase: origin ← destination (destination emphasised, no English in between)
 // one weight for both names: <b> inside the 600-weight chip became 900, which Segoe UI lacks for Hebrew, so a fallback font was used
@@ -1172,8 +1219,9 @@ function renderStrip(model){
   // destination
   h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
   // buses below the line: last fix (dot) and position now (pill)
+  const myA=my?my.along:null;
   for(const b of model){
-    const cls=b.stale?"old":b.live?"live":"";
+    const cls=(b.stale?"old":b.live?"live":"")+(myA!=null&&b.along>myA+30?" gone":"");
     h+=`<i class="sfix ${cls}" style="left:${stripX(b.along)}%"></i>`;
     h+=`<span class="sbus ${cls}${fb&&fb.ref===b.ref?" focus":""}" id="sb-${esc(b.ref)}" style="left:${stripX(busNowAlong(b))}%">${esc(title.num)}${b.start!=null?`<small>${hm(b.start)}</small>`:""}</span>`;
   }
@@ -1210,6 +1258,10 @@ async function refresh(){
     const rows=(sr.status==="fulfilled"?sr.value:[]).concat(live);
     if(rows.length>=LIMIT) log(`WARNING: hit limit ${LIMIT}`);
     const added=merge(rows); okCount++;
+    if(!refresh.backfill&&sr.status==="fulfilled"){ refresh.backfill=true; const t0=Date.now();   // older positions, once, in the background
+      getJSON("stride-history",q(t0-HISTORY_MIN*60000,t0-FIRST_WINDOW_MIN*60000+60000))
+        .then(r=>{ const n=merge(r); log(`history: ${r.length} rows, ${n} new`); render(); })
+        .catch(e=>{ log("history fetch failed: "+e.message); refresh.backfill=false; }); }
     try{ if(added&&probeAt&&probeState!=="disabled") buildProfile(); }catch(e){ log("profile failed: "+e.message); }
     try{ detectPasses(); recordPredictions(buildModel()); }catch(e){ log("accuracy step failed: "+e.message); }
     log(`refresh ok: ${rows.length} rows, ${added} new, ${vehicles.size} vehicles`);
