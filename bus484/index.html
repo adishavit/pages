@@ -145,7 +145,7 @@ tr.past td{color:var(--mut)}
   </div>
   <div id="panes">
     <div class="pane sel" id="p-buses"><div id="buses"></div></div>
-    <div class="pane" id="p-line"><div id="traffic"></div><div class="mut" style="font-size:12px">Tap a station to make it your stop. Line colour = traffic from other buses.</div><div id="diagram"></div></div>
+    <div class="pane" id="p-line"><div id="traffic"></div><div class="mut" style="font-size:12px">Tap a station to make it your stop.</div><div id="diagram"></div></div>
     <div class="pane" id="p-deps"><div id="deps"></div></div>
     <div class="pane set" id="p-set">
       <h3>Map style</h3>
@@ -171,8 +171,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v30";
-const BUILD="2026-11-24T20:01:43Z";
+const VERSION="v31";
+const BUILD="2026-11-24T20:02:53Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -619,11 +619,12 @@ function trafficRuns(){ // contiguous stretches with the same level
     for(let k=r.k0;k<=r.k1;k++){d+=prof.C;t+=prof.C*prof.pace[k];pd+=prof.C*prof.plan[k];} r.speed=d/t; r.plan=d/pd; }
   return runs;
 }
-function runName(r){ // relative to the nearest stop at the jam's head (downstream end)
-  let n=null,nd=Infinity; for(const s of stops){const d=Math.abs(s.along-r.a1); if(d<nd){nd=d;n=s;}}
-  if(!n||nd>2000) return `route km ${(r.a0/1000).toFixed(1)}–${(r.a1/1000).toFixed(1)}`;
-  const len=Math.round((r.a1-r.a0)/100)*100;
-  return n.along>=r.a1-50?`${len} m before ${n.name}`:`${len} m, ending ${Math.round((r.a1-n.along)/100)*100} m after ${n.name}`;
+function runName(r){ // plain words: "near X" when the jam's head is close to a station, else "between X and Y"
+  if(!stops.length) return "";
+  let n=null,nd=Infinity; for(const x of stops){const d=Math.abs(x.along-r.a1); if(d<nd){nd=d;n=x;}}
+  if(n&&nd<=300) return `near ${shortName(n.name)}`;
+  const mid=(r.a0+r.a1)/2; let i=0; while(i<stops.length-2&&stops[i+1].along<mid) i++;
+  return `between ${shortName(stops[i].name)} and ${shortName(stops[i+1].name)}`;
 }
 async function fetchProbes(){
   if(probeBusy||!sections.length||probeState==="disabled") return;
@@ -721,7 +722,7 @@ function renderAccuracy(){
 function renderTraffic(){
   const el=$("traffic"); if(!el) return;
   if(probeState==="disabled"){el.innerHTML=`<div class="card mut">${esc(probeInfo)}</div>`;return;}
-  if(!probeAt){el.innerHTML=`<div class="card mut">Traffic: loading bus speeds…</div>`;return;}
+  if(!probeAt){el.innerHTML=`<div class="card mut">Traffic: loading…</div>`;return;}
   const runs=trafficRuns(), hot=[];
   for(const r of runs.filter(x=>x.lv>=1)){ const last=hot[hot.length-1];       // merge adjacent slow/jam stretches into one hotspot
     if(last&&r.a0-last.a1<=150){ const t=(last.a1-last.a0)/last.speed+(r.a1-r.a0)/r.speed, pt=(last.a1-last.a0)/last.plan+(r.a1-r.a0)/r.plan;
@@ -729,9 +730,9 @@ function renderTraffic(){
     else hot.push({...r}); }
   for(let i=hot.length-1;i>=0;i--) if(hot[i].a1-hot[i].a0<(hot[i].lv===2?200:300)) hot.splice(i,1);
   const cov=prof?Math.round(prof.conf.filter(c=>c>=ASM.minConf).length*prof.C/100)/10:0, age=prof&&prof.tRef?Math.round((Date.now()-prof.tRef)/60000):null;
-  let h=`<div class="card"><h4>Traffic <span class="mut" style="font-weight:400;font-size:12px">${prof?prof.veh:0} buses · ${cov} km covered${age!=null?` · ${age} min old`:""}</span></h4>`;
-  if(!hot.length) h+=cov?`<div>🟢 Moving as planned where measured.</div>`:`<div class="mut">Not enough buses on the road to measure right now.</div>`;
-  for(const r of hot) h+=`<div>${r.lv===2?"🔴":"🟠"} <span class="rtl">${esc(runName(r))}</span>: <b>${Math.round(r.speed*3.6)} km/h</b> <span class="mut">vs planned ${Math.round(r.plan*3.6)} (${Math.round((r.speed/r.plan-1)*100)}%)</span></div>`;
+  let h=`<div class="card"><h4>Traffic</h4>`;
+  if(!hot.length) h+=cov?`<div>🟢 Traffic is normal along the route.</div>`:`<div class="mut">No traffic information right now.</div>`;
+  for(const r of hot) h+=`<div>${r.lv===2?"🔴 Heavy":"🟠 Slow"}: <span class="rtl">${esc(runName(r))}</span> <span class="mut">· ${Math.round(r.speed*3.6)} km/h, usually ${Math.round(r.plan*3.6)}</span></div>`;
   el.innerHTML=h+"</div>";
 }
 
@@ -870,16 +871,15 @@ function renderCards(model){
     const badge=b.stale?`<span class="badge b-old">no update ${Math.round(b.behind)} min</span>`:b.live?`<span class="badge b-live">live</span>`:`<span class="badge b-str">recent</span>`;
     h+=`<div class="card${b.stale?" stale":""}"><h4>${busName(b)} ${badge} ${delayHtml(b)}</h4>
       <div>${nx?`Next: <span class="rtl">${esc(nx.name)}</span>`:`At the terminus`} <span class="mut">· after <span class="rtl">${esc(at.name)}</span></span></div>
-      <div class="mut">Fix ${hms(tms(b.r))} (${fmtAge(b.ageS)} ago)${b.sp>0?` · ~${Math.round(b.sp*3.6)} km/h avg`:""} · ${(b.along/1000).toFixed(1)} km along${b.off>400?` · ${(b.off/1000).toFixed(1)} km off route`:""}</div>
+      <div class="mut">Seen at ${hm(tms(b.r))}</div>
       ${b.etas.length?`<div class="etas">🕓 ${b.etas.slice(0,4).map(u=>`<span class="rtl">${esc(u.s.name)}</span> <b>${hm(u.eta)}</b>`).join(" · ")}</div>`:""}
-      <div class="mut" style="font-size:11px">vehicle ${esc(b.ref)}${b.delaySrc?` · delay from ${b.delaySrc}`:""}</div></div>`;
+</div>`;
   }
   const shown=new Set(model.map(b=>b.ref));
   for(const[vr]of liveEta){ if(shown.has(vr)) continue; const ups=upcomingEtas(vr); if(!ups.length) continue;
     const st=startOf(vr);
-    h+=`<div class="card"><h4>${esc(title.num)}${st!=null?` <span class="mut" style="font-weight:400">· ${hm(st)} dep.</span>`:""} <span class="badge b-old">not moving yet</span></h4>
-      <div class="etas">🕓 ${ups.slice(0,4).map(u=>`<span class="rtl">${esc(u.s.name)}</span> <b>${hm(u.eta)}</b>`).join(" · ")}</div>
-      <div class="mut" style="font-size:11px">vehicle ${esc(vr)}</div></div>`; }
+    h+=`<div class="card"><h4>${esc(title.num)}${st!=null?` <span class="mut" style="font-weight:400">· ${hm(st)} dep.</span>`:""} <span class="badge b-old">not departed yet</span></h4>
+      <div class="etas">🕓 ${ups.slice(0,4).map(u=>`<span class="rtl">${esc(u.s.name)}</span> <b>${hm(u.eta)}</b>`).join(" · ")}</div></div>`; }
   el.innerHTML=h;
 }
 function renderDiagram(model,preds){
@@ -913,18 +913,18 @@ function renderDeps(model){
     const atMine=s&&Number.isFinite(s.off)?r.st+s.off*1000+(b&&b.delay>0?b.delay*60000:0):null;
     const status=b?`${b.live?"🟢":"🔴"} running ${delayHtml(b)}`:r.st>now?"scheduled":r.end<now?`<span class="mut">done / no data</span>`:`<span class="mut">no data</span>`;
     h+=`<tr class="${r.end<now&&!b?"past":""}"><td><b>${hm(r.st)}</b></td>${s?`<td>${atMine?hm(atMine):""}</td>`:""}<td>${status}</td></tr>`;}
-  el.innerHTML=h+`</table><div class="mut" style="font-size:11px;margin-top:6px">Times at your stop are from the timetable, shifted by the bus's current delay when known.</div>`;
+  el.innerHTML=h+`</table>`;
 }
 function renderHero(model){
   const s=myStop();
-  $("heroStop").innerHTML=s?`My stop: <span class="rtl"><b>${esc(s.name)}</b></span>`:"My stop: tap a station on the map or in Line";
+  $("heroStop").innerHTML=s?`My stop: <span class="rtl"><b>${esc(s.name)}</b></span>`:"Tap a station to choose your stop";
   if(!s){$("heroMin").textContent="–";$("heroTxt").textContent="";$("heroNext").textContent="";return;}
   const p=myStopPredictions(model);
-  if(!p.length){$("heroMin").textContent="–";$("heroTxt").innerHTML=(refreshErr||!rides.length)&&!lastModel.length?`No data yet (connection or timetable not loaded).`:`No more ${esc(title.num)} today at this stop (as far as the data shows).`;$("heroNext").textContent="";return;}
+  if(!p.length){$("heroMin").textContent="–";$("heroTxt").innerHTML=(refreshErr||!rides.length)&&!lastModel.length?`Loading…`:`No more ${esc(title.num)} buses today.`;$("heroNext").textContent="";return;}
   const m=Math.max(0,Math.round((p[0].t-Date.now())/60000));
   $("heroMin").textContent=m===0?"now":m+" min";
-  $("heroTxt").innerHTML=`Next <b>${esc(title.num)}</b> at ${hm(p[0].t)} <span class="mut">(${METHODS[p[0].src]||p[0].src})</span>`;
-  $("heroNext").innerHTML=p.slice(1,3).length?"Then: "+p.slice(1,3).map(x=>`${hm(x.t)}${x.src==="tt"?"":"*"}`).join(", ")+" <span>(* = live/estimated)</span>":"";
+  $("heroTxt").innerHTML=`Next <b>${esc(title.num)}</b> at ${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}`;
+  $("heroNext").innerHTML=p.slice(1,3).length?"Then: "+p.slice(1,3).map(x=>hm(x.t)).join(", "):"";
 }
 function renderTitle(){
   $("lineChip").innerHTML=`<span class="num">${esc(title.num)}</span><bdi>${esc(title.from||"")}</bdi>${title.to?` → <bdi>${esc(title.to)}</bdi>`:""}`;
@@ -943,10 +943,10 @@ function render(){
   renderMap(model); renderCards(model); renderDiagram(model); renderDeps(model); renderHero(model); renderTitle(); renderTraffic(); renderAccuracy(); renderStrip(model);
   $("probeInfo").textContent=(probeInfo||"not run yet")+(probeAt?` · last run ${hm(probeAt)}`:"");
   const st=$("status"), lag=newestMs?Math.round((Date.now()-newestMs)/60000):null;
-  const lv=liveState==="ok"?"live ✅":liveState==="ok-warn"?"live ⚠️":liveState==="untried"?"live …":`live ❌ ${liveState}`;
+  const lv=liveState==="ok"||liveState==="ok-warn"?"live":liveState==="untried"?"":"live positions unavailable";
   st.className=(liveState!=="ok"&&liveState!=="ok-warn"&&liveState!=="untried")?"err":"";
-  if(refreshErr){st.className="err";st.textContent=`Could not load data: ${refreshErr} · retrying in 60 s`;$("heroAge").textContent=VERSION;return;}
-  st.innerHTML=`${model.length} bus${model.length===1?"":"es"} · newest fix ${newestMs?hm(newestMs)+` (${lag} min ago)`:"–"} · ${lv}${liveLastErr?` <span>[${esc(liveLastErr)}]</span>`:""}`;
+  if(refreshErr){st.className="err";st.textContent=`Can't reach the bus data right now · retrying`;$("heroAge").textContent=VERSION;return;}
+  st.innerHTML=`${model.length} bus${model.length===1?"":"es"} on the road${newestMs?` · positions from ${hm(newestMs)}`:""}${lv?` · ${lv}`:""}`;   // details in ⚙︎ debug log
   $("heroAge").textContent=`${VERSION}${lastRun?` · updated ${hm(lastRun)}`:""}`;
 }
 
@@ -1143,7 +1143,7 @@ let meWatch=null, meCentered=false;
 $("btnMe").addEventListener("click",()=>{
   const btn=$("btnMe");
   if(meWatch!==null){navigator.geolocation.clearWatch(meWatch);meWatch=null;btn.classList.remove("on");HAVE_MAP&&meLayer.clearLayers();return;}
-  if(!window.isSecureContext){toast("Location needs HTTPS");log("location blocked: not a secure context");return;}
+  if(!window.isSecureContext){toast("Your location isn't available on this page");log("location blocked: not a secure context");return;}
   if(!navigator.geolocation){toast("No location support");return;}
   btn.classList.add("on");meCentered=false;
   meWatch=navigator.geolocation.watchPosition(p=>{const la=p.coords.latitude,lo=p.coords.longitude;
