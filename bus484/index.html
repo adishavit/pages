@@ -26,13 +26,22 @@
   #panel.big{height:60vh} #map.big{bottom:60vh}
   details{margin-top:6px} summary{font-size:12px;color:#06c}
   #dbg{font:11px/1.35 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;background:#f5f5f5;padding:6px;margin:4px 0}
+  #tools{position:absolute;top:10px;right:10px;z-index:1000;display:flex;gap:6px}
+  #tools button{margin:0;font-size:15px;padding:6px 10px;background:#fff;border:1px solid #888;border-radius:6px}
+  #tools button.on{background:#1565c0;color:#fff}
+  .busicon.est{background:#fff;color:#d32f2f;border:2px dashed #d32f2f;opacity:.9}
+  .meicon{width:16px;height:16px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 4px #000;box-sizing:border-box}
+  .me{background:#e8f0fe;padding:4px;border-radius:4px}
+  #msg{display:none;background:#fde7e9;border:1px solid #b00020;padding:6px;margin-bottom:6px;font-size:13px}
   button{font-size:13px;padding:4px 10px;margin-left:6px}
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="tools"><button id="btnMe">📍 Me</button><button id="btnFit">⤢ Route</button></div>
 <div id="panel">
   <div id="upd" style="display:none;background:#fff3cd;border:1px solid #c90;padding:6px;margin-bottom:6px;font-size:13px"></div>
+  <div id="msg"></div>
   <div id="ver"></div>
   <div id="status">Loading…</div>
   <div id="buses"></div>
@@ -44,8 +53,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
-const VERSION = "v6";
-const BUILD = "2026-11-24T16:35:25Z";   // UTC time this file was built/pushed
+const VERSION = "v7";
+const BUILD = "2026-11-24T16:38:56Z";   // UTC time this file was built/pushed
 const PAGE_LOADED = Date.now();
 const LOG = [];
 function log(msg){
@@ -116,11 +125,12 @@ if (HAVE_MAP){
 }
 
 function drawStops(){
+  setRoute(road || stops.map(s=>[s[2],s[3]]));
   if(!HAVE_MAP) return;
   stopLayer.clearLayers();
   if (routeLine) map.removeLayer(routeLine);
-  // Straight lines between stops, not the road shape (stops 7->8 is the highway).
-  routeLine = L.polyline(stops.map(s=>[s[2],s[3]]),{color:"#1565c0",weight:3,dashArray:"6 6"}).addTo(stopLayer);
+  // Road geometry from OSRM if loaded, else straight lines between stops (dashed).
+  routeLine = L.polyline(routePts,{color:"#1565c0",weight:road?4:3,opacity:road?.7:1,dashArray:road?null:"6 6"}).addTo(stopLayer);
   stops.forEach((s,idx)=>{
     const k = s[1].includes("קרליבך");
     const end = idx===0 || idx===stops.length-1;
@@ -143,7 +153,7 @@ async function loadStops(){
     rs.sort((a,b)=>a.stop_sequence-b.stop_sequence);
     const ok = rs.filter(r=>Number.isFinite(r.gtfs_stop__lat)&&Number.isFinite(r.gtfs_stop__lon));
     log(`stops: ${ok.length}/${rs.length} valid from API (ride ${rides[0].id})`);
-    if(ok.length>3){ stops = ok.map(r=>[r.stop_sequence,r.gtfs_stop__name,r.gtfs_stop__lat,r.gtfs_stop__lon]); drawStops(); render(); }
+    if(ok.length>3){ stops = ok.map(r=>[r.stop_sequence,r.gtfs_stop__name,r.gtfs_stop__lat,r.gtfs_stop__lon]); road=null; drawStops(); render(); loadRoad(); }
   }catch(e){ log("stops lookup failed, using built-in stops: "+e.message); }
 }
 
@@ -154,7 +164,7 @@ async function probe(url){
   catch(e){ log("probe: no-cors also failed ("+e.name+": "+e.message+") => network/DNS/firewall problem"); }
   finally{clearTimeout(t);}
 }
-async function getJSON(label,url,ms=TIMEOUT_MS){
+async function getJSON(label,url,ms=TIMEOUT_MS,wantArray=true){
   const t0=performance.now();
   log(`-> ${label} GET ${url}`);
   const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),ms);
@@ -163,8 +173,8 @@ async function getJSON(label,url,ms=TIMEOUT_MS){
     log(`<- ${label} HTTP ${res.status} after ${Math.round(performance.now()-t0)}ms, type=${res.type}`);
     if(!res.ok) throw new Error(`${label}: HTTP ${res.status}`);
     const data=await res.json();
-    if(!Array.isArray(data)) throw new Error(`${label}: expected a JSON array, got ${typeof data}`);
-    log(`   ${label} ${data.length} items, ${Math.round(performance.now()-t0)}ms total`);
+    if(wantArray&&!Array.isArray(data)) throw new Error(`${label}: expected a JSON array, got ${typeof data}`);
+    log(`   ${label} ${Array.isArray(data)?data.length+" items":"object"}, ${Math.round(performance.now()-t0)}ms total`);
     return data;
   }catch(e){
     log(`!! ${label} failed after ${Math.round(performance.now()-t0)}ms: ${e.name}: ${e.message}`);
@@ -176,6 +186,78 @@ async function getJSON(label,url,ms=TIMEOUT_MS){
 
 function dist(a,b,c,d){const R=6371e3,t=Math.PI/180,dl=(c-a)*t,dn=(d-b)*t;
   const h=Math.sin(dl/2)**2+Math.cos(a*t)*Math.cos(c*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
+
+// ---- route geometry (road shape via OSRM), snapping and projection ----
+let road=null, routePts=[], routeCum=[0];
+function setRoute(pts){
+  routePts=pts; routeCum=[0];
+  for(let i=1;i<pts.length;i++) routeCum.push(routeCum[i-1]+dist(pts[i-1][0],pts[i-1][1],pts[i][0],pts[i][1]));
+}
+function snap(lat,lon){            // nearest point on route: {along (m from start), d (m off route)}
+  let best={along:0,d:Infinity};
+  const kx=Math.cos(lat*Math.PI/180)*111320, ky=110540;
+  for(let i=1;i<routePts.length;i++){
+    const [ay,ax]=routePts[i-1],[by,bx]=routePts[i];
+    const ux=(bx-ax)*kx, uy=(by-ay)*ky, px=(lon-ax)*kx, py=(lat-ay)*ky, L2=ux*ux+uy*uy;
+    const t=L2?Math.max(0,Math.min(1,(px*ux+py*uy)/L2)):0, d=Math.hypot(px-t*ux,py-t*uy);
+    if(d<best.d) best={d,along:routeCum[i-1]+t*(routeCum[i]-routeCum[i-1])};
+  }
+  return best;
+}
+function pointAt(a){
+  a=Math.max(0,Math.min(a,routeCum[routeCum.length-1]));
+  let i=1; while(i<routeCum.length-1&&routeCum[i]<a) i++;
+  const seg=routeCum[i]-routeCum[i-1], t=seg?(a-routeCum[i-1])/seg:0, A=routePts[i-1], B=routePts[i];
+  return [A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t];
+}
+function slice(a,b){
+  const out=[pointAt(a)];
+  for(let i=0;i<routeCum.length;i++) if(routeCum[i]>a&&routeCum[i]<b) out.push(routePts[i]);
+  out.push(pointAt(b)); return out;
+}
+function nearestStop(lat,lon){let n=stops[0],nd=Infinity;for(const s of stops){const d=dist(lat,lon,s[2],s[3]);if(d<nd){nd=d;n=s;}}return [n,nd];}
+async function loadRoad(){
+  const key="road484:"+stops.map(s=>(+s[2]).toFixed(4)+","+(+s[3]).toFixed(4)).join(";");
+  try{ const c=localStorage.getItem(key); if(c){ road=JSON.parse(c); log(`road: ${road.length} pts from cache`); drawStops(); render(); return; } }catch(_){}
+  try{
+    const coords=stops.map(s=>s[3]+","+s[2]).join(";");
+    const d=await getJSON("road",`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,TIMEOUT_MS,false);
+    if(d.code!=="Ok"||!d.routes||!d.routes[0]) throw new Error("OSRM code "+d.code);
+    road=d.routes[0].geometry.coordinates.map(([x,y])=>[y,x]);
+    log(`road: ${road.length} pts, ${(d.routes[0].distance/1000).toFixed(1)} km (OSRM car routing through the stops)`);
+    try{ localStorage.setItem(key,JSON.stringify(road)); }catch(_){}
+    drawStops(); render();
+  }catch(e){ log("road geometry failed, keeping straight lines: "+e.message); }
+}
+
+// ---- my location (needs https) ----
+let me=null, meWatch=null, meLayer=HAVE_MAP?L.layerGroup().addTo(map):null, meCentered=false;
+function showMsg(t){ const m=$("msg"); m.style.display=t?"block":"none"; m.innerHTML=t||""; }
+function toggleMe(){
+  const btn=$("btnMe");
+  if(meWatch!==null){ navigator.geolocation.clearWatch(meWatch); meWatch=null; me=null; btn.classList.remove("on"); if(meLayer) meLayer.clearLayers(); render(); log("location off"); return; }
+  if(!window.isSecureContext){
+    const u="https://"+location.host+location.pathname;
+    showMsg(`Location needs HTTPS. Open <a href="${esc(u)}">${esc(u)}</a> (in GitHub: Settings → Pages → Enforce HTTPS).`);
+    log("location blocked: page is not a secure context ("+location.protocol+")"); return;
+  }
+  if(!navigator.geolocation){ showMsg("This browser has no location support."); return; }
+  btn.classList.add("on"); meCentered=false; showMsg("");
+  meWatch=navigator.geolocation.watchPosition(p=>{
+    me={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy,t:p.timestamp};
+    if(HAVE_MAP){
+      meLayer.clearLayers();
+      L.circle([me.lat,me.lon],{radius:me.acc,color:"#1a73e8",weight:1,fillOpacity:.1}).addTo(meLayer);
+      L.marker([me.lat,me.lon],{icon:L.divIcon({className:"",html:'<div class="meicon"></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(meLayer);
+      if(!meCentered){ map.setView([me.lat,me.lon],13); meCentered=true; }
+    }
+    render();
+  },e=>{ log("location error "+e.code+": "+e.message); showMsg("Location error: "+esc(e.message)); btn.classList.remove("on"); meWatch=null; },
+  {enableHighAccuracy:true,maximumAge:10000,timeout:30000});
+  log("location on");
+}
+$("btnMe").addEventListener("click",toggleMe);
+$("btnFit").addEventListener("click",()=>{ if(HAVE_MAP&&routeLine) map.fitBounds(routeLine.getBounds().pad(0.1)); });
 
 // ---- state: fixes accumulate across refreshes; later refreshes fetch only what is new ----
 const vehicles = new Map();   // vehicle ref -> Map(fix id -> row)
@@ -222,21 +304,52 @@ function merge(rows){
 function render(){
   if(HAVE_MAP) busLayer.clearLayers();
   const list=$("buses"); list.textContent="";
+  const now=Date.now();
   const vs=[...vehicles].map(([ref,m])=>{const fx=[...m.values()].sort((a,b)=>tms(a)-tms(b));return {ref,fx,last:fx[fx.length-1]};})
     .sort((a,b)=>tms(b.last)-tms(a.last));
+  const meSnap = me ? snap(me.lat,me.lon) : null;
+  if(me){
+    const [ns,nd]=nearestStop(me.lat,me.lon);
+    const div=document.createElement("div"); div.className="bus me";
+    div.innerHTML=`<b>📍 You</b> (±${Math.round(me.acc)} m) · ${(meSnap.along/1000).toFixed(1)} km along route`+
+      `${meSnap.d>300?` · <b>${(meSnap.d/1000).toFixed(1)} km off route</b>`:""}<br>Nearest stop: <span dir="rtl">${esc(ns[1])}</span> (${Math.round(nd)} m)`;
+    list.appendChild(div);
+  }
   for(const v of vs){
     const r=v.last, behind=(newestMs-tms(r))/60000, stale=behind>STALE_MIN, label=v.ref.slice(-3);
-    let near=stops[0], nd=Infinity;
-    for(const s of stops){const d=dist(r.lat,r.lon,s[2],s[3]); if(d<nd){nd=d;near=s;}}
+    const [near,nd]=nearestStop(r.lat,r.lon);
+    // estimate: progress along the route at this bus's recent average speed, for the time since its last fix
+    let est=null;
+    if(!stale && routePts.length>1){
+      const s1=snap(r.lat,r.lon);
+      const ref=v.fx.find(f=>tms(r)-tms(f)<=10*60000);
+      let sp=0;
+      if(ref&&ref!==r){ const dt=(tms(r)-tms(ref))/1000; if(dt>=90) sp=Math.max(0,(s1.along-snap(ref.lat,ref.lon).along)/dt); }
+      sp=Math.min(sp,25);  // cap at 90 km/h
+      const ageS=Math.max(0,(now-tms(r))/1000);
+      const a=Math.min(routeCum[routeCum.length-1], s1.along+sp*ageS);
+      est={along:a, from:s1.along, p:pointAt(a), kmh:sp*3.6, ageMin:ageS/60};
+    }
     if(HAVE_MAP){
       if(v.fx.length>1) L.polyline(v.fx.map(f=>[f.lat,f.lon]),{color:stale?"#999":"#d32f2f",weight:3,opacity:.6}).addTo(busLayer);
       L.marker([r.lat,r.lon],{icon:L.divIcon({className:"",html:`<div class="busicon${stale?" old":""}">${esc(label)}</div>`,iconSize:[30,30],iconAnchor:[15,15]})})
-        .bindTooltip(`Bus …${esc(label)} @ ${hhmm(tms(r))}`).addTo(busLayer);
+        .bindTooltip(`Bus …${esc(label)}: last fix ${hhmm(tms(r))}`).addTo(busLayer);
+      if(est && est.along-est.from>50){
+        L.polyline(slice(est.from,est.along),{color:"#d32f2f",weight:3,dashArray:"4 6"}).addTo(busLayer);
+        L.marker(est.p,{icon:L.divIcon({className:"",html:`<div class="busicon est">${esc(label)}</div>`,iconSize:[30,30],iconAnchor:[15,15]})})
+          .bindTooltip(`Bus …${esc(label)}: ESTIMATED now`).addTo(busLayer);
+      }
+    }
+    let estTxt="";
+    if(est){
+      const [es]=nearestStop(est.p[0],est.p[1]);
+      estTxt=`<br>Est. now (${est.kmh.toFixed(0)} km/h avg × ${est.ageMin.toFixed(0)} min): ${(est.along/1000).toFixed(1)} km along, near <span dir="rtl">${esc(es[1])}</span>`;
+      if(meSnap) estTxt+=` · <b>${((est.along-meSnap.along)/1000).toFixed(1)} km ${est.along>=meSnap.along?"ahead of":"behind"} you</b>`;
     }
     const div=document.createElement("div"); div.className="bus"+(stale?" stale":"");
-    div.innerHTML=`<b>Bus …${esc(label)}</b> (vehicle ${esc(v.ref)}) · ${esc(r.velocity ?? "?")} km/h? · fix ${hhmm(tms(r))}`+
+    div.innerHTML=`<b>Bus …${esc(label)}</b> (vehicle ${esc(v.ref)}) · last fix ${hhmm(tms(r))}, ${esc(r.velocity ?? "?")} km/h?`+
       `${stale?` · <b>no update for ${behind.toFixed(0)} min</b>`:""}<br>`+
-      `Nearest stop: <span dir="rtl">${esc(near[1])}</span> (${Math.round(nd)} m)`;
+      `At fix: near <span dir="rtl">${esc(near[1])}</span> (${Math.round(nd)} m)`+estTxt;
     list.appendChild(div);
   }
   return vs.length;
@@ -304,6 +417,7 @@ setInterval(checkVersion, 5*60000);
 drawStops();
 refresh();
 loadStops();
+loadRoad();
 checkVersion();
 </script>
 </body>
