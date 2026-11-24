@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Line 484 live – Tel Aviv → Mevaseret Zion</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'">
 <style>
   html,body{margin:0;height:100%;font-family:system-ui,-apple-system,sans-serif}
   #map{position:absolute;inset:0 0 168px 0}
@@ -14,11 +14,14 @@
   #status.err{color:#b00020}
   .bus{padding:4px 0;border-top:1px solid #eee}
   .bus b{font-size:15px}
-  .stale{color:#b00020}
+  .bus.stale{color:#888}
+  .busicon.old{background:#999}
   .stoplbl{background:#fff;border:1px solid #888;border-radius:3px;padding:0 3px;font-size:11px;white-space:nowrap;direction:rtl}
+  .far .stoplbl.n{display:none}
+  .stoplbl.e{font-weight:700}
   .stoplbl.k{background:#ffe08a;border-color:#c60;font-weight:700}
-  .busicon{background:#d32f2f;color:#fff;border:2px solid #fff;border-radius:50%;width:26px;height:26px;
-    line-height:22px;text-align:center;font-weight:700;font-size:11px;box-shadow:0 0 4px #000}
+  .busicon{background:#d32f2f;color:#fff;border:2px solid #fff;border-radius:50%;width:30px;height:30px;box-sizing:border-box;
+    line-height:26px;text-align:center;font-weight:700;font-size:11px;box-shadow:0 0 4px #000}
   #ver{font-size:11px;color:#666;margin-bottom:4px}
   #panel.big{height:60vh} #map.big{bottom:60vh}
   details{margin-top:6px} summary{font-size:12px;color:#06c}
@@ -38,9 +41,10 @@
   </details>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
-const VERSION = "v4";
-const BUILD = "2026-11-24T16:26:21Z";   // UTC time this file was built/pushed
+const VERSION = "v5";
+const BUILD = "2026-11-24T16:29:27Z";   // UTC time this file was built/pushed
 const PAGE_LOADED = Date.now();
 const LOG = [];
 function log(msg){
@@ -50,18 +54,17 @@ function log(msg){
 }
 function copyLog(){
   const txt = verLine()+"\n"+LOG.join("\n");
-  if(navigator.clipboard) navigator.clipboard.writeText(txt).then(()=>log("log copied"),()=>log("copy failed"));
-  else log("clipboard unavailable: select the text manually");
+  const sel=()=>{const r=document.createRange();r.selectNodeContents(document.getElementById("dbg"));const w=getSelection();w.removeAllRanges();w.addRange(r);log("copy unavailable: text selected, use the system Copy");};
+  try{ navigator.clipboard.writeText(txt).then(()=>log("log copied"),sel); }catch(e){ sel(); }
 }
 function fmt(sec){sec=Math.floor(sec);const m=Math.floor(sec/60);return m? m+"m"+(sec%60)+"s" : sec+"s";}
 function verLine(){
   const buildAge=(Date.now()-new Date(BUILD).getTime())/1000;
   return `${VERSION} · built ${BUILD} (${fmt(buildAge)} ago) · page opened ${fmt((Date.now()-PAGE_LOADED)/1000)} ago`;
 }
-setInterval(()=>{const e=document.getElementById("ver"); if(e) e.textContent=verLine();},1000);
 document.getElementById("dbgwrap").addEventListener("toggle",e=>{
   for(const id of ["panel","map"]) document.getElementById(id).classList.toggle("big",e.target.open);
-  map.invalidateSize();
+  try{ if(map) setTimeout(()=>map.invalidateSize(),50); }catch(_){}
 });
 window.addEventListener("error",e=>log("JS error: "+e.message+" @"+(e.lineno||"?")));
 window.addEventListener("unhandledrejection",e=>log("Unhandled rejection: "+(e.reason&&e.reason.message||e.reason)));
@@ -72,10 +75,18 @@ log(`online=${navigator.onLine} tz=${Intl.DateTimeFormat().resolvedOptions().tim
 const API = "https://open-bus-stride-api.hasadna.org.il";
 const LINE_REF = 19094;            // line 484, Tel Aviv Savidor -> Mevaseret Zion (Tnufa), looked up for 2026-11-24
 const REFRESH_MS = 60000;
-const WINDOW_MIN = 15;             // how far back to look for fixes
-const STALE_MIN = 5;               // flag a bus whose last fix is older than this
+const FIRST_WINDOW_MIN = 30;       // Stride lags real time by ~7-15 min (measured 2026-11-24), so first look-back must exceed that
+const KEEP_MIN = 30;               // forget a vehicle whose last fix is this much older than the newest data
+const STALE_MIN = 5;               // a bus this far behind the newest data is probably finished / not transmitting
+const TIMEOUT_MS = 30000;
+const LIMIT = 500;
+const HAVE_MAP = typeof L !== "undefined";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const tms = r => Date.parse(r.recorded_at_time);
+const hhmm = ms => new Date(ms).toLocaleTimeString("he-IL",{timeZone:"Asia/Jerusalem",hour:"2-digit",minute:"2-digit",second:"2-digit"});
 
-// Stops from GTFS ride 164125712 (2026-11-24). Used as a fallback; refreshed from the API at load.
+// Stops from GTFS ride 164125712 (2026-11-24). Fallback; replaced from the API at load if that works.
 let stops = [
  [1,"ת. רכבת תל אביב- סבידור/רציפים A",32.083157,34.796089],
  [2,"מתחם מידטאון/דרך מנחם בגין",32.080071,34.795266],
@@ -90,65 +101,72 @@ let stops = [
  [11,"תחנת משטרה/הראל",31.802479,35.149484],
  [12,"מרכז ספורט",31.804484,35.151863]];
 
-const map = L.map("map").setView([32.0, 35.0], 9);
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-  {maxZoom:19, attribution:"© OpenStreetMap"}).addTo(map);
-
-const stopLayer = L.layerGroup().addTo(map);
-const busLayer = L.layerGroup().addTo(map);
-let routeLine = null, fitted = false;
+let map=null, stopLayer=null, busLayer=null, routeLine=null, fitted=false;
+if (HAVE_MAP){
+  map = L.map("map").setView([32.0, 35.0], 9);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19, attribution:"© OpenStreetMap"}).addTo(map);
+  stopLayer = L.layerGroup().addTo(map);
+  busLayer = L.layerGroup().addTo(map);
+  const zoomCls = () => map.getContainer().classList.toggle("far", map.getZoom() < 12);
+  map.on("zoomend", zoomCls); zoomCls();
+} else {
+  log("Leaflet failed to load from both CDNs: map disabled, list still works");
+  $("map").innerHTML = '<p style="padding:1em">Map library failed to load. Bus list below still updates.</p>';
+}
 
 function drawStops(){
+  if(!HAVE_MAP) return;
   stopLayer.clearLayers();
   if (routeLine) map.removeLayer(routeLine);
-  // Straight lines between stops (not the real road shape; the gap between stops 7 and 8 is the highway).
-  routeLine = L.polyline(stops.map(s=>[s[2],s[3]]),{color:"#1565c0",weight:3,dashArray:"6 6"}).addTo(map);
-  for (const s of stops){
+  // Straight lines between stops, not the road shape (stops 7->8 is the highway).
+  routeLine = L.polyline(stops.map(s=>[s[2],s[3]]),{color:"#1565c0",weight:3,dashArray:"6 6"}).addTo(stopLayer);
+  stops.forEach((s,idx)=>{
     const k = s[1].includes("קרליבך");
-    const m = L.circleMarker([s[2],s[3]],{radius:k?8:5,color:k?"#c60":"#1565c0",fillColor:k?"#ffe08a":"#fff",fillOpacity:1,weight:2})
-      .bindTooltip(s[1],{permanent:k||stops.length<=12,direction:"right",className:"stoplbl"+(k?" k":"")})
+    const end = idx===0 || idx===stops.length-1;
+    L.circleMarker([s[2],s[3]],{radius:k?8:5,color:k?"#c60":"#1565c0",fillColor:k?"#ffe08a":"#fff",fillOpacity:1,weight:2})
+      .bindTooltip(esc(s[1]),{permanent:true,direction:"right",className:"stoplbl"+(k?" k":end?" e":" n")})
       .addTo(stopLayer);
-  }
+  });
   if(!fitted){ map.fitBounds(routeLine.getBounds().pad(0.1)); fitted = true; }
 }
 
 async function loadStops(){
   try{
-    // newest ride of this line's route today -> its stops
     const today = new Date().toLocaleDateString("sv",{timeZone:"Asia/Jerusalem"});
     const rt = await getJSON("routes",`${API}/gtfs_routes/list?route_short_name=484&date_from=${today}&date_to=${today}&limit=10`);
     const route = rt.find(r=>r.line_ref===LINE_REF);
-    if(!route) return;
-    const rides = await getJSON("rides",`${API}/gtfs_rides/list?gtfs_route_id=${route.id}&limit=1&order_by=start_time%20desc`);
-    if(!rides.length) return;
-    const rs = await getJSON("stops",`${API}/gtfs_ride_stops/list?gtfs_ride_ids=${rides[0].id}&limit=200&order_by=stop_sequence%20asc`);
-    log(`stops: ${rs.length} from API (ride ${rides[0].id})`);
-    if(rs.length>3) stops = rs.map(r=>[r.stop_sequence,r.gtfs_stop__name,r.gtfs_stop__lat,r.gtfs_stop__lon]);
+    if(!route){ log("stops: line_ref not in today's GTFS routes, keeping built-in stops"); return; }
+    const rides = await getJSON("rides",`${API}/gtfs_rides/list?gtfs_route_id=${route.id}&limit=1`);
+    if(!rides.length){ log("stops: no GTFS rides today, keeping built-in stops"); return; }
+    const rs = await getJSON("stops",`${API}/gtfs_ride_stops/list?gtfs_ride_ids=${rides[0].id}&limit=200`);
+    rs.sort((a,b)=>a.stop_sequence-b.stop_sequence);
+    const ok = rs.filter(r=>Number.isFinite(r.gtfs_stop__lat)&&Number.isFinite(r.gtfs_stop__lon));
+    log(`stops: ${ok.length}/${rs.length} valid from API (ride ${rides[0].id})`);
+    if(ok.length>3){ stops = ok.map(r=>[r.stop_sequence,r.gtfs_stop__name,r.gtfs_stop__lat,r.gtfs_stop__lon]); drawStops(); render(); }
   }catch(e){ log("stops lookup failed, using built-in stops: "+e.message); }
 }
 
 async function probe(url){
-  // no-cors request resolves (opaque) if the host is reachable even when CORS blocks reading it
+  // no-cors resolves (opaque) if the host is reachable even when CORS blocks reading it
   const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),10000);
-  try{ await fetch(url,{mode:"no-cors",signal:ctl.signal}); log("probe: host reachable with no-cors => CORS is blocking reads (or response not readable)"); }
-  catch(e){ log("probe: no-cors also failed ("+e.name+": "+e.message+") => network/DNS/firewall problem, not just CORS"); }
+  try{ await fetch(url,{mode:"no-cors",signal:ctl.signal,cache:"no-store"}); log("probe: host reachable with no-cors => CORS is blocking reads"); }
+  catch(e){ log("probe: no-cors also failed ("+e.name+": "+e.message+") => network/DNS/firewall problem"); }
   finally{clearTimeout(t);}
 }
-async function getJSON(label,url,ms=20000){
+async function getJSON(label,url,ms=TIMEOUT_MS){
   const t0=performance.now();
   log(`-> ${label} GET ${url}`);
   const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),ms);
   try{
-    const res=await fetch(url,{signal:ctl.signal});
-    const ttfb=Math.round(performance.now()-t0);
-    log(`<- ${label} HTTP ${res.status} ${res.statusText} after ${ttfb}ms, type=${res.type}, content-type=${res.headers.get("content-type")}`);
+    const res=await fetch(url,{signal:ctl.signal,cache:"no-store"});
+    log(`<- ${label} HTTP ${res.status} after ${Math.round(performance.now()-t0)}ms, type=${res.type}`);
     if(!res.ok) throw new Error(`${label}: HTTP ${res.status}`);
     const data=await res.json();
-    log(`   ${label} parsed in ${Math.round(performance.now()-t0)}ms total, ${Array.isArray(data)?data.length+" items":typeof data}`);
+    if(!Array.isArray(data)) throw new Error(`${label}: expected a JSON array, got ${typeof data}`);
+    log(`   ${label} ${data.length} items, ${Math.round(performance.now()-t0)}ms total`);
     return data;
   }catch(e){
-    const ms2=Math.round(performance.now()-t0);
-    log(`!! ${label} failed after ${ms2}ms: ${e.name}: ${e.message}`);
+    log(`!! ${label} failed after ${Math.round(performance.now()-t0)}ms: ${e.name}: ${e.message}`);
     if(e.name==="AbortError") throw new Error(`${label}: timed out after ${ms/1000}s`);
     if(e instanceof TypeError){ probe(url); throw new Error(`${label}: ${e.message} (network error or blocked by CORS)`); }
     throw e;
@@ -158,67 +176,118 @@ async function getJSON(label,url,ms=20000){
 function dist(a,b,c,d){const R=6371e3,t=Math.PI/180,dl=(c-a)*t,dn=(d-b)*t;
   const h=Math.sin(dl/2)**2+Math.cos(a*t)*Math.cos(c*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
 
+// ---- state: fixes accumulate across refreshes; later refreshes fetch only what is new ----
+const vehicles = new Map();   // vehicle ref -> Map(fix id -> row)
+let newestMs = null;          // newest fix seen (data time, not phone time)
+let inFlight=false, timer=null, lastRun=0, nextAt=0, okCount=0, failCount=0;
+
+function q(fromMs,toMs){
+  return `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${LINE_REF}`+
+    `&recorded_at_time_from=${encodeURIComponent(new Date(fromMs).toISOString())}`+
+    `&recorded_at_time_to=${encodeURIComponent(new Date(toMs).toISOString())}&limit=${LIMIT}`;
+}
+async function fetchPositions(){
+  const now=Date.now(), to=now+5*60000;     // 5 min margin for phone clock skew
+  if(newestMs){                             // incremental: from 1 min before the newest fix we have
+    const from=Math.max(newestMs-60000, now-FIRST_WINDOW_MIN*60000);
+    return getJSON("positions-incremental", q(from,to));
+  }
+  try{ return await getJSON(`positions-${FIRST_WINDOW_MIN}min`, q(now-FIRST_WINDOW_MIN*60000,to)); }
+  catch(e){
+    if(!/timed out/.test(e.message)) throw e;
+    return getJSON("positions-20min", q(now-20*60000,to));   // still longer than the observed lag
+  }
+}
+function merge(rows){
+  let added=0;
+  for(const r of rows){
+    if(!Number.isFinite(r.lat)||!Number.isFinite(r.lon)||!Number.isFinite(tms(r))||(r.lat===0&&r.lon===0)) continue;
+    const ref=String(r.siri_ride__vehicle_ref ?? r.siri_ride__id ?? "?");
+    if(!vehicles.has(ref)) vehicles.set(ref,new Map());
+    const m=vehicles.get(ref); if(!m.has(r.id)) added++;
+    m.set(r.id,r);
+    if(newestMs===null||tms(r)>newestMs) newestMs=tms(r);
+  }
+  if(newestMs!==null){
+    const cutoff=newestMs-KEEP_MIN*60000;
+    for(const [ref,m] of vehicles){
+      for(const [id,f] of m) if(tms(f)<cutoff) m.delete(id);
+      if(!m.size) vehicles.delete(ref);
+    }
+  }
+  return added;
+}
+
+function render(){
+  if(HAVE_MAP) busLayer.clearLayers();
+  const list=$("buses"); list.textContent="";
+  const vs=[...vehicles].map(([ref,m])=>{const fx=[...m.values()].sort((a,b)=>tms(a)-tms(b));return {ref,fx,last:fx[fx.length-1]};})
+    .sort((a,b)=>tms(b.last)-tms(a.last));
+  for(const v of vs){
+    const r=v.last, behind=(newestMs-tms(r))/60000, stale=behind>STALE_MIN, label=v.ref.slice(-3);
+    let near=stops[0], nd=Infinity;
+    for(const s of stops){const d=dist(r.lat,r.lon,s[2],s[3]); if(d<nd){nd=d;near=s;}}
+    if(HAVE_MAP){
+      if(v.fx.length>1) L.polyline(v.fx.map(f=>[f.lat,f.lon]),{color:stale?"#999":"#d32f2f",weight:3,opacity:.6}).addTo(busLayer);
+      L.marker([r.lat,r.lon],{icon:L.divIcon({className:"",html:`<div class="busicon${stale?" old":""}">${esc(label)}</div>`,iconSize:[30,30],iconAnchor:[15,15]})})
+        .bindTooltip(`Bus …${esc(label)} @ ${hhmm(tms(r))}`).addTo(busLayer);
+    }
+    const div=document.createElement("div"); div.className="bus"+(stale?" stale":"");
+    div.innerHTML=`<b>Bus …${esc(label)}</b> (vehicle ${esc(v.ref)}) · ${esc(r.velocity ?? "?")} km/h? · fix ${hhmm(tms(r))}`+
+      `${stale?` · <b>no update for ${behind.toFixed(0)} min</b>`:""}<br>`+
+      `Nearest stop: <span dir="rtl">${esc(near[1])}</span> (${Math.round(nd)} m)`;
+    list.appendChild(div);
+  }
+  return vs.length;
+}
+
+function schedule(ms){ clearTimeout(timer); nextAt=Date.now()+ms; timer=setTimeout(refresh, ms); }
+
 async function refresh(){
+  if(inFlight){ log("refresh skipped: one already running"); return; }
+  inFlight=true; clearTimeout(timer); nextAt=0; lastRun=Date.now();
+  const st=$("status");
   log("refresh start");
-  const st = document.getElementById("status");
+  st.className=""; st.textContent = newestMs ? "Updating…" : `Fetching positions (last ${FIRST_WINDOW_MIN} min)…`;
   try{
-    // light query: short time window, no server-side sort (sorted here); retry with a shorter window on timeout
-    let rows=null, lastErr=null;
-    for(const win of [5,2]){
-      const from = new Date(Date.now()-win*60000).toISOString();
-      const url = `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${LINE_REF}`+
-        `&recorded_at_time_from=${encodeURIComponent(from)}&limit=100`;
-      st.className=""; st.textContent=`Fetching live positions (last ${win} min)…`;
-      try{ rows = await getJSON(`positions-${win}min`,url,45000); break; }
-      catch(e){ lastErr=e; if(!/timed out/.test(e.message)) throw e; }
-    }
-    if(!rows) throw lastErr;
-    rows.sort((x,y)=> (y.recorded_at_time>x.recorded_at_time?1:-1));
-    log(`positions: ${rows.length} rows; newest=${rows[0]?rows[0].recorded_at_time:"-"}; oldest=${rows.length?rows[rows.length-1].recorded_at_time:"-"}`);
-    if(rows[0]) log("row keys: "+Object.keys(rows[0]).join(","));
-    if(rows[0]) log("newest row: "+JSON.stringify(rows[0]));
-    // keep newest fix per vehicle (field name for vehicle assumed: siri_ride__vehicle_ref; falls back to ride id)
-    const latest = new Map();
-    for(const r of rows){
-      const key = r.siri_ride__vehicle_ref ?? r.siri_ride_id ?? "?";
-      if(!latest.has(key)) latest.set(key,r);
-    }
-    log(`vehicles with a fix: ${latest.size} [${[...latest.keys()].join(", ")}]`);
-    busLayer.clearLayers();
-    const list = document.getElementById("buses"); list.innerHTML = "";
-    const now = Date.now();
-    let i = 0;
-    for(const [key,r] of latest){
-      i++;
-      const ageMin = (now - new Date(r.recorded_at_time).getTime())/60000;
-      let near = stops[0], nd = Infinity;
-      for(const s of stops){const d=dist(r.lat,r.lon,s[2],s[3]); if(d<nd){nd=d;near=s;}}
-      L.marker([r.lat,r.lon],{icon:L.divIcon({className:"",html:`<div class="busicon">${i}</div>`,iconSize:[26,26]}),opacity:ageMin>STALE_MIN?0.5:1})
-        .bindTooltip(`Bus ${i}`).addTo(busLayer);
-      const div = document.createElement("div"); div.className="bus";
-      div.innerHTML = `<b>Bus ${i}</b> (ref ${key}) · speed ${r.velocity ?? "?"} · `+
-        `<span class="${ageMin>STALE_MIN?"stale":""}">${ageMin.toFixed(1)} min ago</span><br>`+
-        `Nearest stop: <span dir="rtl">${near[1]}</span> (${Math.round(nd)} m)`;
-      list.appendChild(div);
-    }
-    log("refresh ok");
-    const t = new Date().toLocaleTimeString("he-IL",{timeZone:"Asia/Jerusalem"});
-    st.className = "";
-    st.innerHTML = latest.size
-      ? `${latest.size} bus(es) with a fix in the last 5 min · updated ${t} · refreshes every 60s <button onclick="refresh()">Refresh now</button>`
-      : `No fixes for line 484 (→Mevaseret) in the last 5 min · checked ${t} <button onclick="refresh()">Refresh now</button>`;
+    const rows=await fetchPositions();
+    if(rows.length>=LIMIT) log(`WARNING: hit limit ${LIMIT}; some fixes may be missing`);
+    const added=merge(rows);
+    if(rows[0] && okCount===0) log("row keys: "+Object.keys(rows[0]).join(","));
+    const n=render(); okCount++;
+    const lag = newestMs ? ((Date.now()-newestMs)/60000).toFixed(0) : null;
+    log(`refresh ok: ${rows.length} rows, ${added} new, ${n} vehicles, newest=${newestMs?new Date(newestMs).toISOString():"-"}`);
+    st.innerHTML = (n
+      ? `<b>${n} bus(es)</b> · data as of ${hhmm(newestMs)} (<b>${lag} min behind now</b>, source delay)`
+      : `No buses on line 484 (→Mevaseret) in the last ${KEEP_MIN} min of data${newestMs?` · data as of ${hhmm(newestMs)}`:""}`)
+      + ` · checked ${hhmm(Date.now())} <button onclick="refresh()">Refresh now</button>`;
   }catch(e){
+    failCount++;
     log("refresh failed: "+e.message);
-    st.className = "err";
-    st.innerHTML = `Could not load live data: ${e.name}: ${e.message}. Will retry in 60s. <button onclick="refresh()">Retry</button>`;
+    st.className="err";
+    st.innerHTML=`Could not load live data: ${esc(e.message)}. Retrying in 60s.${vehicles.size?" Showing last known positions.":""} <button onclick="refresh()">Retry</button>`;
+  }finally{
+    inFlight=false;
+    if(!document.hidden) schedule(REFRESH_MS);
   }
 }
 
+setInterval(()=>{ const e=$("ver"); if(e) e.textContent=verLine()+
+  ` · ok ${okCount}/fail ${failCount}`+(inFlight?" · fetching…":nextAt?` · next in ${Math.max(0,Math.round((nextAt-Date.now())/1000))}s`:""); },1000);
+
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){ clearTimeout(timer); nextAt=0; log("page hidden: paused"); return; }
+  log("page visible");
+  if(inFlight) return;
+  const since=Date.now()-lastRun;
+  since>15000 ? refresh() : schedule(REFRESH_MS-since);
+});
+window.addEventListener("online",()=>{ log("browser online"); if(!inFlight) refresh(); });
+window.addEventListener("offline",()=>log("browser offline"));
+
 drawStops();
 refresh();
-loadStops().then(drawStops);
-setInterval(refresh, REFRESH_MS);
-document.addEventListener("visibilitychange",()=>{ if(!document.hidden) refresh(); });
+loadStops();
 </script>
 </body>
 </html>
