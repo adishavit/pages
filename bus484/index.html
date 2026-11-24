@@ -176,8 +176,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v39";
-const BUILD="2026-11-24T20:19:25Z";
+const VERSION="v40";
+const BUILD="2026-11-24T20:21:16Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -967,7 +967,8 @@ function render(){
   const st=$("status"), lag=newestMs?Math.round((Date.now()-newestMs)/60000):null;
   const lv=liveState==="ok"||liveState==="ok-warn"?"live":liveState==="untried"?"":"live positions unavailable";
   st.className=(liveState!=="ok"&&liveState!=="ok-warn"&&liveState!=="untried")?"err":"";
-  if(refreshErr){st.className="err";st.textContent=`Can't reach the bus data right now · retrying`;$("heroAge").textContent=VERSION;return;}
+  if(!okCount&&!refreshErr&&!model.length){st.className="";st.textContent="Waiting for bus data…";$("heroAge").textContent=VERSION;return;}
+  else if(refreshErr){st.className="err";st.textContent=`Can't reach the bus data right now · retrying`;$("heroAge").textContent=VERSION;return;}
   st.innerHTML=`${model.length} bus${model.length===1?"":"es"} on the road${newestMs?` · positions from ${hm(newestMs)}`:""}${lv?` · ${lv}`:""}`;   // details in ⚙︎ debug log
   $("heroAge").textContent=`${VERSION}${lastRun?` · updated ${hm(lastRun)}`:""}`;
 }
@@ -1087,8 +1088,11 @@ async function refresh(){
   if(inFlight){log("refresh skipped (running)");return;}
   inFlight=true;clearTimeout(timer);nextAt=0;lastRun=Date.now();
   try{
-    const[sr,lr]=await Promise.allSettled([fetchStride(),fetchLive()]);
+    const sp=fetchStride(), lp=fetchLive();
+    const [lr]=await Promise.allSettled([lp]);
     const live=lr.status==="fulfilled"&&lr.value?lr.value:[];
+    if(live.length||liveEta.size){ merge(live); render(); }          // show live buses without waiting for the slower source
+    const [sr]=await Promise.allSettled([sp]);
     if(sr.status==="rejected"&&!live.length&&!liveEta.size) throw sr.reason;
     if(sr.status==="rejected") log("Stride failed: "+sr.reason.message);
     const rows=(sr.status==="fulfilled"?sr.value:[]).concat(live);
@@ -1199,7 +1203,7 @@ $("btnMe").addEventListener("click",()=>{
 // ---------- start ----------
 setSheet(0);
 (async()=>{
-  if(REF===19094){useBuiltin();drawStops();renderTitle();refresh();}   // known line: start polling at once
+  if(REF===19094){useBuiltin();drawStops();renderTitle();render();refresh();}   // known line: draw at once, start polling
   await loadLine(); setUrl(); drawStops(); render(); await loadRoad(); loadStopZones(); fetchProbes();
   if(!okCount&&!inFlight) refresh();
   if(!rides.length&&!stops.length){$("heroTxt").textContent=`Line ${LINE} not found today. Use ⚙︎ to pick a line.`;}
