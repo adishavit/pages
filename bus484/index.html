@@ -54,6 +54,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sbus small{font-weight:400;margin-left:3px}
 .sbus.live{background:var(--live)}.sbus.old{background:var(--old)}
 .sbus.focus{outline:2px solid #ffcf33}
+#strip.lensing .sbus{transition:none}
 #hero{padding:4px 16px 8px;touch-action:none}
 #heroTop{font-size:12px;color:var(--mut);display:flex;justify-content:space-between;gap:8px}
 #heroMain{display:flex;align-items:baseline;gap:10px;margin-top:2px}
@@ -169,8 +170,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v28";
-const BUILD="2026-11-24T19:57:34Z";
+const VERSION="v29";
+const BUILD="2026-11-24T19:59:41Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -394,7 +395,7 @@ const rideStart=new Map();         // ref -> scheduled ride start (ms)
 const vehTrip=new Map();           // ref -> journey number (no date)
 const liveEta=new Map();           // ref -> Map(stop code -> {eta, seen})
 let newestMs=null, strideNewestMs=null;
-let liveState="untried", liveRetryAt=0, liveLastErr="", liveTurn=0;
+let liveState="untried", liveRetryAt=0, liveLastErr="", liveTurn=0, liveFails=0;
 let refreshErr="", inFlight=false, timer=null, lastRun=0, nextAt=0, okCount=0, failCount=0;
 
 function q(from,to){return `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${REF}&recorded_at_time_from=${encodeURIComponent(new Date(from).toISOString())}&recorded_at_time_to=${encodeURIComponent(new Date(to).toISOString())}&limit=${LIMIT}`;}
@@ -417,10 +418,12 @@ async function fetchLive(){
   let d;
   try{ d=await getJSON(`live-${code}`,`${LIVE_BASE}/${code}`,25000,false,{Accept:"application/json"}); }
   catch(e){
-    const lim=/HTTP 429/.test(e.message);
-    liveState=lim?"rate-limited":/CORS|network/.test(e.message)?"blocked":"error";
-    liveLastErr=e.message; liveRetryAt=Date.now()+(lim?5:2)*60000;
-    log(`live ${liveState}; retry in ${lim?5:2} min`); return null;
+    const lim=/HTTP 429/.test(e.message), blocked=/CORS|network/.test(e.message); liveFails++;
+    if(lim||blocked||liveFails>=3){   // one-off server errors (e.g. curlbus 500 for one stop) just skip a turn
+      liveState=lim?"rate-limited":blocked?"blocked":"error"; liveLastErr=e.message; liveRetryAt=Date.now()+(lim?5:2)*60000;
+      log(`live ${liveState} (${liveFails} failures); retry in ${lim?5:2} min`);
+    } else { if(liveState==="ok") liveState="ok-warn"; liveLastErr=""; log(`live stop ${code} failed (${e.message}); keeping last data`); }
+    return null;
   }
   const respMs=parseTs(d&&d.timestamp), best=new Map(); let total=0,noLoc=0;
   for(const sc in (d&&d.visits)||{}) for(const v of d.visits[sc]||[]){
@@ -436,7 +439,7 @@ async function fetchLive(){
     const row={id:`L:${vr}:${ms}`,live:true,recorded_at_time:new Date(ms).toISOString(),lat:+v.location.lat,lon:+v.location.lon,velocity:null,bearing:null,siri_ride__vehicle_ref:vr};
     if(!best.has(vr)||ms>tms(best.get(vr))) best.set(vr,row);
   }
-  liveState="ok"; liveLastErr="";
+  liveState="ok"; liveLastErr=""; liveFails=0;
   log(`live ${code}: ${total} visits; this line: ${best.size} with position, ${noLoc} without`);
   return [...best.values()];
 }
@@ -923,7 +926,7 @@ function renderHero(model){
   $("heroNext").innerHTML=p.slice(1,3).length?"Then: "+p.slice(1,3).map(x=>`${hm(x.t)}${x.src==="tt"?"":"*"}`).join(", ")+" <span>(* = live/estimated)</span>":"";
 }
 function renderTitle(){
-  $("lineChip").innerHTML=`<span class="num">${esc(title.num)}</span>${esc(title.from||"")}${title.to?" → "+esc(title.to):""}`;
+  $("lineChip").innerHTML=`<span class="num">${esc(title.num)}</span><bdi>${esc(title.from||"")}</bdi>${title.to?` → <bdi>${esc(title.to)}</bdi>`:""}`;
   document.title=`${title.num} ${title.to?"→ "+title.to:""} · live`;
   $("btnDir").style.display=dirOptions().length?"":"none";
 }
@@ -939,8 +942,8 @@ function render(){
   renderMap(model); renderCards(model); renderDiagram(model); renderDeps(model); renderHero(model); renderTitle(); renderTraffic(); renderAccuracy(); renderStrip(model);
   $("probeInfo").textContent=(probeInfo||"not run yet")+(probeAt?` · last run ${hm(probeAt)}`:"");
   const st=$("status"), lag=newestMs?Math.round((Date.now()-newestMs)/60000):null;
-  const lv=liveState==="ok"?"live ✅":liveState==="untried"?"live …":`live ❌ ${liveState}`;
-  st.className=(liveState!=="ok"&&liveState!=="untried")?"err":"";
+  const lv=liveState==="ok"?"live ✅":liveState==="ok-warn"?"live ⚠️":liveState==="untried"?"live …":`live ❌ ${liveState}`;
+  st.className=(liveState!=="ok"&&liveState!=="ok-warn"&&liveState!=="untried")?"err":"";
   if(refreshErr){st.className="err";st.textContent=`Could not load data: ${refreshErr} · retrying in 60 s`;$("heroAge").textContent=VERSION;return;}
   st.innerHTML=`${model.length} bus${model.length===1?"":"es"} · newest fix ${newestMs?hm(newestMs)+` (${lag} min ago)`:"–"} · ${lv}${liveLastErr?` <span>[${esc(liveLastErr)}]</span>`:""}`;
   $("heroAge").textContent=`${VERSION}${lastRun?` · updated ${hm(lastRun)}`:""}`;
@@ -964,7 +967,18 @@ function stripLayout(){
   for(const v of w){x+=v/tot*(100-2*M); stripX0.push(x);}
   if(stripFlip) stripX0=stripX0.map(v=>100-v);
 }
-function stripX(a){
+// Lens: while a finger is on the strip, a 1-D fisheye (Sarkar & Brown) spreads stations near the finger
+// and compresses the rest; order is preserved and it relaxes smoothly on release.
+let lensF=50, lensK=0, lensAnim=0;
+function lensX(x){
+  if(lensK<=0) return x;
+  const m=3*lensK, d=x-lensF, D=d>=0?100-lensF:lensF; if(D<=0) return x;
+  const n=Math.abs(d)/D, g=((m+1)*n)/(m*n+1);
+  return lensF+Math.sign(d)*g*D;
+}
+const SX=i=>lensX(stripX0[i]);       // station position on screen (%), lens applied
+function stripX(a){ return lensX(stripXraw(a)); }
+function stripXraw(a){
   if(!stripX0) return 0;
   if(a<=stops[0].along) return stripX0[0];
   for(let i=0;i<stops.length-1;i++){const A=stops[i].along,B=stops[i+1].along;
@@ -1000,17 +1014,17 @@ function renderStrip(model){
         const bg=q.lv==null?"var(--acc)":q.lv===2?"repeating-linear-gradient(135deg,#c62828 0 4px,#7f0000 4px 7px)":LEVEL_COLOR[q.lv];
         h+=`<i class="sl${q.lv===2?" jam":q.lv===1?" slow":""}${q.past?" past":""}" style="left:${g.l}%;width:${g.w}%;background:${bg};${q.lv==null&&!q.past?"opacity:.5;":""}"></i>`; }
     }
-    const gapMin=(stops[i+1].off-stops[i].off)/60, gx=Math.abs(stripX0[i+1]-stripX0[i]);
-    if(gapMin>=10&&gx>14) h+=`<span class="sgap" style="left:${(stripX0[i]+stripX0[i+1])/2}%">~${Math.round(gapMin)} min ${stripFlip?"◀":"▶"}</span>`;
-    else if(gx>7) h+=`<span class="sarr" style="left:${(stripX0[i]+stripX0[i+1])/2}%">${stripFlip?"◀":"▶"}</span>`;
+    const gapMin=(stops[i+1].off-stops[i].off)/60, gx=Math.abs(SX(i+1)-SX(i));
+    if(gapMin>=10&&gx>14) h+=`<span class="sgap" style="left:${(SX(i)+SX(i+1))/2}%">~${Math.round(gapMin)} min ${stripFlip?"◀":"▶"}</span>`;
+    else if(gx>7) h+=`<span class="sarr" style="left:${(SX(i)+SX(i+1))/2}%">${stripFlip?"◀":"▶"}</span>`;
   }
   // stations, all named (angled); my stop with its ETA
   const p=myStop()?myStopPredictions(model):[], myEta=p.length?p[0].t:null, my=myStop();
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
-    h+=`<b class="sd${mine?" mine":""}${past?" past":""}${nx?" next":""}" data-code="${esc(s.code)}" style="left:${stripX0[i]}%" title="${esc(s.name)}"></b>`;
+    h+=`<b class="sd${mine?" mine":""}${past?" past":""}${nx?" next":""}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${Math.max(0,Math.round((myEta-Date.now())/60000))}′`:"");
-    h+=`<span class="slab${stripX0[i]>50?" r":""}${mine?" mine":""}${past?" past":""}${nx?" next":""}" style="left:${stripX0[i]}%"><span>${lab}</span></span>`;
+    h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":""}${past?" past":""}${nx?" next":""}" style="left:${SX(i)}%"><span>${lab}</span></span>`;
   });
   // destination
   h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
@@ -1096,6 +1110,19 @@ $("tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)
   if(sheetIdx===0)setSheet(1); if(b.dataset.t==="set")$("dbg").textContent=LOG.join("\n");});
 $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r)setMyStop(r.dataset.code);});
 $("strip").addEventListener("click",e=>{const d=e.target.closest(".sd");if(d)setMyStop(d.dataset.code);});
+(function lens(){
+  const el=$("strip"); let raf=0, down=false;
+  const draw=()=>{raf=0; renderStrip(lastModel||[]);};
+  const ask=()=>{ if(!raf) raf=requestAnimationFrame(draw); };
+  const at=e=>{const r=el.getBoundingClientRect(); return Math.max(0,Math.min(100,(e.clientX-r.left)/r.width*100));};
+  el.addEventListener("pointerdown",e=>{ down=true; cancelAnimationFrame(lensAnim); lensF=at(e); el.classList.add("lensing");
+    const t0=performance.now(), k0=lensK; const grow=now=>{ lensK=Math.min(1,k0+(now-t0)/150); ask(); if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); }; lensAnim=requestAnimationFrame(grow); });
+  el.addEventListener("pointermove",e=>{ if(!down) return; lensF=at(e); ask(); });
+  const up=()=>{ if(!down) return; down=false; cancelAnimationFrame(lensAnim);
+    const t0=performance.now(), k0=lensK; const shrink=now=>{ lensK=Math.max(0,k0*(1-(now-t0)/250)); ask();
+      if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); }; lensAnim=requestAnimationFrame(shrink); };
+  el.addEventListener("pointerup",up); el.addEventListener("pointercancel",up); el.addEventListener("pointerleave",up);
+})();
 $("lineChip").addEventListener("click",()=>{$("tabs").querySelector('[data-t="set"]').click();setSheet(Math.max(sheetIdx,1));});
 $("btnFit").addEventListener("click",fitRoute);
 (function(){const sel=$("mapStyle"); sel.innerHTML=Object.entries(STYLES).map(([k,v])=>`<option value="${k}">${esc(v.name)}</option>`).join(""); sel.value=MAP_STYLE;
