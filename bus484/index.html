@@ -140,8 +140,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v18";
-const BUILD="2026-11-24T19:16:15Z";
+const VERSION="v19";
+const BUILD="2026-11-24T19:20:21Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -249,6 +249,18 @@ function switchTo(ref,line){ const p=new URLSearchParams();p.set("line",line||LI
 const HAVE_MAP=typeof L!=="undefined";
 let map=null, stopLayer, hotLayer, trailLayer, estLayer, meLayer, routeLine=null, fitted=false;
 const busMarkers=new Map();   // ref -> {m, from, to, t0}
+const estMarkers=new Map();   // ref -> {m, line, along, fixT, sp}: predicted position, creeping along the road
+function estAlongNow(e){ const age=Math.max(0,(Date.now()-e.fixT)/1000);
+  return haveTraffic()?advance(e.along,age):Math.min(routeLen(),e.along+e.sp*age); }   // congestion-aware when bus speeds exist
+function tickEst(jump){
+  if(!HAVE_MAP||document.hidden) return;
+  for(const[,e]of estMarkers){
+    const a=estAlongNow(e), show=a-e.along>50;
+    e.m.setOpacity(show?1:0); e.line.setLatLngs(show?slice(e.along,a):[]);
+    if(show){ const p=pointAt(a); jump?e.m.setLatLng(p):animate(e,p,1000); }   // glide 1 s per step
+  }
+}
+setInterval(()=>tickEst(false),1000);
 if(HAVE_MAP){
   map=L.map("map",{zoomControl:false,attributionControl:false}).setView([32.0,34.9],9);
   L.control.attribution({position:"topright",prefix:false}).addAttribution("© OpenStreetMap").addTo(map);
@@ -645,9 +657,9 @@ function busIcon(b,est){
   const arr=!est&&b.brg!=null&&!b.stale?`<i class="arr" style="transform:rotate(${Math.round(b.brg)}deg)"></i>`:"";
   return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${cls}">${arr}${esc(title.num)}<small>${est?"est.":depLabel(b)}</small></div>`});
 }
-function animate(entry,to){
+function animate(entry,to,D=1200){
   const from=entry.m.getLatLng(); if(from.lat===to[0]&&from.lng===to[1]) return;
-  const t0=performance.now(), D=1200;
+  const t0=performance.now();
   const step=now=>{const k=Math.min(1,(now-t0)/D),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
     entry.m.setLatLng([from.lat+(to[0]-from.lat)*e,from.lng+(to[1]-from.lng)*e]); if(k<1) entry.raf=requestAnimationFrame(step);};
   cancelAnimationFrame(entry.raf); entry.raf=requestAnimationFrame(step);
@@ -664,7 +676,7 @@ function renderHot(){
 function renderMap(model){
   if(!HAVE_MAP) return;
   renderHot();
-  trailLayer.clearLayers(); estLayer.clearLayers();
+  trailLayer.clearLayers();
   const keep=new Set();
   for(const b of model){
     keep.add(b.ref);
@@ -673,12 +685,19 @@ function renderMap(model){
     if(!e){e={m:L.marker([b.r.lat,b.r.lon],{icon:busIcon(b),zIndexOffset:1000}).addTo(map)};busMarkers.set(b.ref,e);}
     else{e.m.setIcon(busIcon(b)); animate(e,[b.r.lat,b.r.lon]);}
     e.m.bindTooltip(`${esc(title.num)} ${b.start!=null?hm(b.start)+" dep. · ":""}${b.live?"live":"Stride"} fix ${hms(tms(b.r))}`);
-    if(!b.stale&&b.estAlong-b.along>50){
-      L.polyline(slice(b.along,b.estAlong),{color:"#d32f2f",weight:3,dashArray:"4 6"}).addTo(estLayer);
-      L.marker(pointAt(b.estAlong),{icon:busIcon(b,true)}).bindTooltip("Estimated position now").addTo(estLayer);
+    // estimated-position marker: persistent, moved every second by tickEst()
+    let es=estMarkers.get(b.ref);
+    if(b.stale){ if(es){es.m.remove();es.line.remove();estMarkers.delete(b.ref);} }
+    else{
+      if(!es){ es={m:L.marker(pointAt(b.estAlong),{icon:busIcon(b,true),opacity:0}).bindTooltip("Estimated position now").addTo(estLayer),
+                   line:L.polyline([],{color:"#d32f2f",weight:3,dashArray:"4 6"}).addTo(estLayer)}; estMarkers.set(b.ref,es); }
+      else es.m.setIcon(busIcon(b,true));
+      Object.assign(es,{along:b.along,fixT:tms(b.r),sp:b.sp});
     }
   }
   for(const[ref,e]of busMarkers) if(!keep.has(ref)){e.m.remove();busMarkers.delete(ref);}
+  for(const[ref,e]of estMarkers) if(!keep.has(ref)){e.m.remove();e.line.remove();estMarkers.delete(ref);}
+  tickEst(true);
 }
 function renderCards(model){
   const el=$("buses"); if(!stops.length){el.innerHTML="";return;}
