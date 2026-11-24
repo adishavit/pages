@@ -1,4 +1,4 @@
-// Cloudflare Worker v6: relay for the bus tracker page.
+// Cloudflare Worker v7: relay for the bus tracker page.
 //   GET /<stop_code>        -> curlbus.app stop arrivals (JSON), CORS-enabled
 //   GET /osrm/<lon,lat;...> -> OSRM road geometry through the given points
 //   GET /stride/siri_vehicle_locations/list?<box+time> -> Stride bus positions in a small map box (traffic probes)
@@ -10,13 +10,15 @@
 // - on upstream error / 429, serve the last good answer for up to 10 min
 // - OSRM shapes cached 24 h (routes do not change)
 // - per-visitor limit: 30 requests/min
+// - position queries: box <= 0.1 x 0.1 degrees and time window <= 3 h (protects the upstream API)
 // - Cache-Control headers, so Cloudflare's Workers Cache (if enabled with Wrangler) and browsers can reuse answers
 // Note: the in-memory cache is per worker instance (best effort), not global; *.workers.dev has no Cache API.
 
 const ALLOWED_ORIGINS = ["https://videocortex.io", "http://videocortex.io", "https://adishavit.github.io"];
 const STOP_FRESH_MS = 45_000, STOP_STALE_MS = 10 * 60_000, OSRM_TTL_MS = 24 * 3600_000;
 const PER_IP_PER_MIN = 60;          // a page now makes ~1 live + ~16 probe requests per few minutes
-const STRIDE_FRESH_MS = 300_000;     // probe boxes: one upstream query per box per 5 min (the page's time window)
+const STRIDE_FRESH_MS = 300_000;
+const STRIDE_MAX_SPAN_MS = 3 * 3600_000;   // the page asks for 20-min windows     // probe boxes: one upstream query per box per 5 min (the page's time window)
 const STRIDE_KEYS = ["lat__greater_or_equal", "lat__lower_or_equal", "lon__greater_or_equal", "lon__lower_or_equal",
                      "recorded_at_time_from", "recorded_at_time_to", "limit"];
 
@@ -32,6 +34,7 @@ function cors(req) {
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Expose-Headers": "X-Relay-Cache",
     "Vary": "Origin",
+    "X-Content-Type-Options": "nosniff",
   };
 }
 function limited(req) {
@@ -83,7 +86,7 @@ export default {
         return reply(JSON.stringify({ error: "osrm HTTP " + r.status }), r.status, "error", 0);
       } catch (e) {
         if (hit) return reply(hit.body, 200, "stale-error", 3600);
-        return reply(JSON.stringify({ error: String(e) }), 502, "error", 0);
+        return reply(JSON.stringify({ error: "osrm unreachable" }), 502, "error", 0);
       }
     }
 
@@ -101,6 +104,9 @@ export default {
       if (+out.get("lat__lower_or_equal") - +out.get("lat__greater_or_equal") > 0.1 ||
           +out.get("lon__lower_or_equal") - +out.get("lon__greater_or_equal") > 0.1)
         return new Response("box too large", { status: 400, headers: c });
+      const span = Date.parse(out.get("recorded_at_time_to")) - Date.parse(out.get("recorded_at_time_from"));
+      if (!(span > 0 && span <= STRIDE_MAX_SPAN_MS))
+        return new Response("time window must be 0-3 h", { status: 400, headers: c });
       const qs = out.toString(), key = "stride:" + qs, hit = cache.get(key);
       if (hit && now - hit.t < STRIDE_FRESH_MS) return reply(hit.body, 200, "fresh", 300);
       try {
@@ -119,7 +125,7 @@ export default {
         return reply(JSON.stringify({ error: "stride HTTP " + r.status }), r.status, "error", 0);
       } catch (e) {
         if (hit) return reply(hit.body, 200, "stale-error", 60);
-        return reply(JSON.stringify({ error: String(e) }), 502, "error", 0);
+        return reply(JSON.stringify({ error: "stride unreachable" }), 502, "error", 0);
       }
     }
 
@@ -136,7 +142,7 @@ export default {
       return reply(JSON.stringify({ error: "curlbus HTTP " + r.status }), r.status, "error", 0);
     } catch (e) {
       if (hit && now - hit.t < STOP_STALE_MS) return reply(hit.body, 200, "stale-error", 30);
-      return reply(JSON.stringify({ error: String(e) }), 502, "error", 0);
+      return reply(JSON.stringify({ error: "curlbus unreachable" }), 502, "error", 0);
     }
   },
 };

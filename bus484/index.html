@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1565c0">
 <title>Live bus tracker</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css'">
 <style>
 :root{--bg:#fff;--fg:#1b1b1f;--mut:#6b6f76;--line:#e6e7ea;--card:#f6f7f9;--acc:#1565c0;--live:#2e7d32;--str:#d32f2f;--old:#9aa0a6;--warn:#b26a00;--late:#c62828;--ok:#2e7d32;--sheet-shadow:0 -6px 24px rgba(0,0,0,.18)}
 @media (prefers-color-scheme:dark){:root{--bg:#17181b;--fg:#ececf0;--mut:#9aa0a6;--line:#2b2d31;--card:#202226;--acc:#64a0ff;--sheet-shadow:0 -6px 24px rgba(0,0,0,.6)}
@@ -210,12 +210,12 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
   <div id="status">Loading…</div>
   <div id="disc">Unofficial · data may be delayed or wrong · data: Ministry of Transport · curlbus.app · Open Bus project</div>
 </div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+<script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v52";
-const BUILD="2026-11-24T21:18:33Z";
+const VERSION="v53";
+const BUILD="2026-11-24T21:27:12Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -242,8 +242,14 @@ const qs=new URLSearchParams(location.search);
 let LINE=qs.get("line")||"484";
 let REF=+qs.get("ref")||(LINE==="484"?19094:0);
 let MY_STOP=qs.get("stop")||load("mystop:"+LINE+":"+REF)||(REF===19094?"20750":"");   // default Karliback for 484 -> Mevaseret
-let LIVE_BASE=(qs.get("relay")||load("relay484")||"https://shiny-shadow-cc40.adishavit.workers.dev").replace(/\/$/,"");
-if(qs.get("relay")) store("relay484",LIVE_BASE);
+const RELAY_DEFAULT="https://shiny-shadow-cc40.adishavit.workers.dev";
+const relayOk=u=>{ try{ const x=new URL(u); return x.protocol==="https:"&&/(^|\.)adishavit\.workers\.dev$/.test(x.hostname)&&x.pathname.replace(/\/$/,"")===""; }catch(_){ return false; } };
+let LIVE_BASE=RELAY_DEFAULT;
+{ const q=qs.get("relay"), st=load("relay484");
+  if(q&&relayOk(q)){ LIVE_BASE=q.replace(/\/$/,""); store("relay484",LIVE_BASE); }
+  else if(st&&relayOk(st)) LIVE_BASE=st.replace(/\/$/,"");
+  else if(st) store("relay484",null);                      // drop a stored relay that is not allowed
+  if(q&&!relayOk(q)) setTimeout(()=>log("ignored ?relay= (not an allowed relay host)"),0); }
 const REFRESH_MS=60000, IDLE_REFRESH_MS=180000, TIMEOUT_MS=30000, LIMIT=500, FIRST_WINDOW_MIN=30, KEEP_MIN=30, HISTORY_MIN=90, STALE_MIN=5;   // KEEP: shown on map/cards; HISTORY: kept for "passed my stop" (hourly lines run late)
 log(`start ${VERSION} build=${BUILD} line=${LINE} ref=${REF} stop=${MY_STOP} relay=${LIVE_BASE}`);
 log(`UA: ${navigator.userAgent} | origin=${location.origin} | secure=${window.isSecureContext}`);
@@ -330,11 +336,11 @@ const STYLES={
   dark:     {name:"Clean dark (CARTO Dark Matter)", carto:"rastertiles/dark_all", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
 };
 let MAP_STYLE=qs.get("map")||load("mapstyle2")||"voyager";
-if(!STYLES[MAP_STYLE]) MAP_STYLE="osm";
+if(!Object.prototype.hasOwnProperty.call(STYLES,MAP_STYLE)) MAP_STYLE="osm";
 let baseLayer=null;
 function styleUrl(st){ return st.carto?`https://basemaps.cartocdn.com/${st.carto}/{z}/{x}/{y}.png?key=${encodeURIComponent(CARTO_KEY)}`:st.url; }
 function setMapStyle(id,initial){
-  const st=STYLES[id]||STYLES.osm;
+  const st=Object.prototype.hasOwnProperty.call(STYLES,id)?STYLES[id]:STYLES.osm;
   MAP_STYLE=id; store("mapstyle2",id);
   if(!map) return;
   if(baseLayer) baseLayer.remove();
@@ -1109,7 +1115,7 @@ function renderRecent(){
 let pickOpts=null;
 function renderLineOpts(){
   const el=$("lineOpts"), list=pickOpts||routeOpts; if(!list.length){el.innerHTML="";return;}
-  el.innerHTML=list.map(r=>{const p=prettyRoute(r);return `<button class="opt${r.line_ref===REF?" cur":""}" data-ref="${r.line_ref}" data-line="${esc(r.route_short_name)}">
+  el.innerHTML=list.map(r=>{const p=prettyRoute(r);return `<button class="opt${r.line_ref===REF?" cur":""}" data-ref="${esc(r.line_ref)}" data-line="${esc(r.route_short_name)}">
     <b>${esc(r.route_short_name)}</b> ${routeHtml(p.from,p.to)}${r.line_ref===REF?' <span class="badge b-live">current</span>':""}<br><span class="mut" style="font-size:12px">${esc(r.agency_name)} · dir ${esc(r.route_direction)}${r.route_alternative&&r.route_alternative!=="0"?" alt "+esc(r.route_alternative):""}</span></button>`;}).join("");
   renderTitle();
 }
@@ -1267,13 +1273,14 @@ async function refresh(){
   finally{inFlight=false;render();if(!document.hidden)schedule(pollInterval());}
 }
 setInterval(()=>{ // ticking clocks + countdown
-  if(!document.hidden) renderFresh();
+  if(document.hidden) return;
+  renderFresh();
   $("ver").textContent=`${VERSION} · built ${BUILD} (${fmtAge((Date.now()-Date.parse(BUILD))/1000)} ago) · opened ${fmtAge((Date.now()-PAGE_LOADED)/1000)} ago · ok ${okCount}/fail ${failCount}${inFlight?" · fetching…":nextAt?` · next in ${Math.max(0,Math.round((nextAt-Date.now())/1000))}s`:""} · relay ${LIVE_BASE.replace(/^https?:\/\//,"")}`;
 },1000);
 setInterval(()=>{ if(!document.hidden){ const m=lastModel.length?buildModel():lastModel; renderHero(m); renderBoard(m);} },15000);
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden){clearTimeout(timer);nextAt=0;log("hidden: paused");return;}
-  log("visible"); if(inFlight) return; const since=Date.now()-lastRun; since>15000?refresh():schedule(pollInterval()-since);
+  log("visible"); checkVersion(); if(inFlight) return; const since=Date.now()-lastRun; since>15000?refresh():schedule(pollInterval()-since);
 });
 window.addEventListener("online",()=>{log("online");if(!inFlight)refresh();});
 async function checkVersion(){
@@ -1283,7 +1290,7 @@ async function checkVersion(){
       $("updBtn").onclick=()=>{const p=new URLSearchParams(location.search);p.set("v",v);location.replace(location.pathname+"?"+p);};}}
   catch(e){log("version check failed: "+e.message);}
 }
-setInterval(checkVersion,5*60000);
+setInterval(()=>{ if(!document.hidden) checkVersion(); },5*60000);
 setInterval(()=>{ if(!document.hidden&&sections.length&&Date.now()-probeAt>PROBE_MS) fetchProbes(); },20000);
 
 // ---------- UI: sheet, tabs, buttons ----------
