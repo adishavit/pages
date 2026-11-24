@@ -214,8 +214,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v51";
-const BUILD="2026-11-24T21:07:12Z";
+const VERSION="v52";
+const BUILD="2026-11-24T21:18:33Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -320,8 +320,7 @@ function prettyRoute(r){const p=String(r.route_long_name||"").split("<->");const
 function switchTo(ref,line){ const p=new URLSearchParams();p.set("line",line||LINE);p.set("ref",ref);location.search=p.toString(); }
 
 // ---------- map styles ----------
-const CARTO_KEY_DEFAULT="cb1_5ffa_1_c34b73c1f350ef400374bf6f";   // CARTO basemaps key (free, non-commercial; public by nature: it is in every tile URL)
-const CARTO_KEY=CARTO_KEY_DEFAULT;
+const CARTO_KEY="cb1_5ffa_1_c34b73c1f350ef400374bf6f";   // CARTO basemaps key (free, non-commercial; public by nature: it is in every tile URL)
 const OSM_ATTR='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const STYLES={
   osm:      {name:"Standard (OpenStreetMap)", url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png", attr:OSM_ATTR, max:19, invert:true},
@@ -330,14 +329,12 @@ const STYLES={
   positron: {name:"Clean light (CARTO Positron)", carto:"rastertiles/light_all", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
   dark:     {name:"Clean dark (CARTO Dark Matter)", carto:"rastertiles/dark_all", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
 };
-const prefersDark=()=>window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches;
 let MAP_STYLE=qs.get("map")||load("mapstyle2")||"voyager";
 if(!STYLES[MAP_STYLE]) MAP_STYLE="osm";
 let baseLayer=null;
 function styleUrl(st){ return st.carto?`https://basemaps.cartocdn.com/${st.carto}/{z}/{x}/{y}.png?key=${encodeURIComponent(CARTO_KEY)}`:st.url; }
 function setMapStyle(id,initial){
-  let st=STYLES[id]||STYLES.osm;
-  if(st.carto&&!CARTO_KEY){ if(!initial) toast("This style needs a free CARTO key (see ⚙︎)"); id="osm"; st=STYLES.osm; }
+  const st=STYLES[id]||STYLES.osm;
   MAP_STYLE=id; store("mapstyle2",id);
   if(!map) return;
   if(baseLayer) baseLayer.remove();
@@ -459,7 +456,7 @@ const rideStart=new Map();         // ref -> scheduled ride start (ms)
 const vehTrip=new Map();           // ref -> journey number (no date)
 const liveEta=new Map();           // ref -> Map(stop code -> {eta, seen})
 let newestMs=null, strideNewestMs=null;
-let liveState="untried", liveRetryAt=0, liveLastErr="", liveTurn=0, liveFails=0;
+let liveState="untried", liveRetryAt=0, liveTurn=0, liveFails=0;
 let refreshErr="", inFlight=false, timer=null, lastRun=0, nextAt=0, okCount=0, failCount=0;
 
 function q(from,to){return `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${REF}&recorded_at_time_from=${encodeURIComponent(new Date(from).toISOString())}&recorded_at_time_to=${encodeURIComponent(new Date(to).toISOString())}&limit=${LIMIT}`;}
@@ -484,9 +481,9 @@ async function fetchLive(){
   catch(e){
     const lim=/HTTP 429/.test(e.message), blocked=/CORS|network/.test(e.message); liveFails++;
     if(lim||blocked||liveFails>=3){   // one-off server errors (e.g. curlbus 500 for one stop) just skip a turn
-      liveState=lim?"rate-limited":blocked?"blocked":"error"; liveLastErr=e.message; liveRetryAt=Date.now()+(lim?5:2)*60000;
+      liveState=lim?"rate-limited":blocked?"blocked":"error"; liveRetryAt=Date.now()+(lim?5:2)*60000;
       log(`live ${liveState} (${liveFails} failures); retry in ${lim?5:2} min`);
-    } else { if(liveState==="ok") liveState="ok-warn"; liveLastErr=""; log(`live stop ${code} failed (${e.message}); keeping last data`); }
+    } else { if(liveState==="ok") liveState="ok-warn"; log(`live stop ${code} failed (${e.message}); keeping last data`); }
     return null;
   }
   const respMs=parseTs(d&&d.timestamp), best=new Map(); let total=0,noLoc=0;
@@ -503,7 +500,7 @@ async function fetchLive(){
     const row={id:`L:${vr}:${ms}`,live:true,recorded_at_time:new Date(ms).toISOString(),lat:+v.location.lat,lon:+v.location.lon,velocity:null,bearing:null,siri_ride__vehicle_ref:vr};
     if(!best.has(vr)||ms>tms(best.get(vr))) best.set(vr,row);
   }
-  liveState="ok"; liveLastErr=""; liveFails=0;
+  liveState="ok"; liveFails=0;
   log(`live ${code}: ${total} visits; this line: ${best.size} with position, ${noLoc} without`);
   return [...best.values()];
 }
@@ -808,7 +805,7 @@ function renderTraffic(){
       const len=(last.a1-last.a0)+(r.a1-r.a0); last.a1=r.a1; last.lv=Math.max(last.lv,r.lv); last.speed=len/t; last.plan=len/pt; }
     else hot.push({...r}); }
   for(let i=hot.length-1;i>=0;i--) if(hot[i].a1-hot[i].a0<(hot[i].lv===2?200:300)) hot.splice(i,1);
-  const cov=prof?Math.round(prof.conf.filter(c=>c>=ASM.minConf).length*prof.C/100)/10:0, age=prof&&prof.tRef?Math.round((Date.now()-prof.tRef)/60000):null;
+  const cov=prof?Math.round(prof.conf.filter(c=>c>=ASM.minConf).length*prof.C/100)/10:0;
   if(!hot.length){ el.innerHTML=cov?`<div class="mut" style="font-size:13px;padding:4px 2px">🟢 Traffic is normal along the route</div>`:""; return; }
   let h=`<div class="card"><h4>Traffic</h4>`;
   for(const r of hot) h+=`<div>${r.lv===2?"🔴 Heavy":"🟠 Slow"}: <span class="rtl">${esc(runName(r))}</span> <span class="mut">· ${Math.round(r.speed*3.6)} km/h, usually ${Math.round(r.plan*3.6)}</span></div>`;
@@ -1122,7 +1119,7 @@ function render(){
   renderMap(model); renderCards(model); renderDiagram(model); renderDeps(model); renderBoard(model); renderHero(model); renderTitle(); renderTraffic(); renderAccuracy(); renderStrip(model); renderFresh();
   $("strip").classList.toggle("pick",!myStop()&&stops.length>0); $("lineHint").style.display=myStop()?"none":"";
   $("probeInfo").textContent=(probeInfo||"not run yet")+(probeAt?` · last run ${hm(probeAt)}`:"");
-  const st=$("status"), lag=newestMs?Math.round((Date.now()-newestMs)/60000):null;
+  const st=$("status");
   const lv=liveState==="ok"||liveState==="ok-warn"?"live":liveState==="untried"?"":"live positions unavailable";
   st.className=(liveState!=="ok"&&liveState!=="ok-warn"&&liveState!=="untried")?"err":"";
   if(!okCount&&!refreshErr&&!model.length){st.className="";st.textContent="Waiting for bus data…";return;}
