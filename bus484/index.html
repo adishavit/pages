@@ -24,25 +24,35 @@ button{font:inherit;color:inherit;cursor:pointer}
 .icon.on{background:var(--acc);color:#fff}
 .leaflet-control-attribution{font-size:9px}
 /* bottom sheet */
-#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,240px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
+#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,272px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
 #sheet.drag{transition:none}
 #grab{padding:8px 0 2px;touch-action:none;cursor:grab}
 #grab i{display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto}
-#strip{position:relative;height:50px;margin:0 16px;touch-action:none}
+#strip{position:relative;height:84px;margin:0 16px;touch-action:none}
 #stripIn{position:absolute;inset:0}
-.sl{position:absolute;top:26px;height:5px;border-radius:3px;margin-top:-2px}
-.sd{position:absolute;top:26px;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#fff;border:2px solid var(--acc);cursor:pointer;z-index:2}
+.sl{position:absolute;top:52px;height:5px;border-radius:3px;margin-top:-2px}
+.sl.slow{height:6px;margin-top:-3px}.sl.jam{height:8px;margin-top:-4px}
+.sl.past{background:var(--old)!important;opacity:.35!important;height:3px;margin-top:-1px}
+.sd{position:absolute;top:52px;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#fff;border:2px solid var(--acc);cursor:pointer;z-index:2}
 .sd::after{content:"";position:absolute;inset:-10px}
+.sd.past{border-color:var(--old)}
+.sd.next{border-width:3px}
 .sd.mine{width:14px;height:14px;margin:-7px 0 0 -7px;background:#ffcf33;border-color:#c60}
-.slab{position:absolute;font-size:10px;line-height:12px;white-space:nowrap;color:var(--mut);direction:rtl;unicode-bidi:isolate}
-.slab.end0{left:0;top:36px}.slab.end1{right:0;top:36px}
-.slab.mine{top:0;transform:translateX(-50%);color:var(--fg);font-weight:700;background:#ffcf33;color:#000;border-radius:4px;padding:0 4px}
-.sgap{position:absolute;top:34px;transform:translateX(-50%);font-size:9px;color:var(--mut);background:var(--bg);padding:0 3px}
-.sfix{position:absolute;top:26px;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--str);z-index:3}
+.slab{position:absolute;top:44px;width:0;height:0}
+.slab>span{position:absolute;left:0;bottom:0;transform-origin:0 100%;transform:rotate(-40deg);font-size:10px;line-height:11px;white-space:nowrap;color:var(--mut);direction:rtl;unicode-bidi:isolate;padding:0 2px}
+.slab.next>span{color:var(--fg);font-weight:600}
+.slab.past>span{opacity:.45}
+.slab.mine>span{background:#ffcf33;color:#000;font-weight:700;border-radius:3px}
+.sgap,.sarr{position:absolute;top:58px;transform:translateX(-50%);font-size:9px;color:var(--mut);background:var(--bg);padding:0 3px;white-space:nowrap}
+.sarr{font-size:8px;top:46px;background:none;opacity:.7}
+.sdest{position:absolute;right:0;top:0;font-size:10px;font-weight:600;color:var(--acc);direction:rtl;unicode-bidi:isolate}
+.sdest.l{right:auto;left:0}
+.sfix{position:absolute;top:52px;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--str);z-index:3}
 .sfix.live{background:var(--live)}.sfix.old{background:var(--old)}
-.sbus{position:absolute;top:12px;transform:translateX(-50%);background:var(--str);color:#fff;border-radius:8px;padding:0 5px;font:700 10px/13px system-ui,sans-serif;white-space:nowrap;z-index:4;transition:left 1s linear;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.sbus{position:absolute;top:62px;transform:translateX(-50%);background:var(--str);color:#fff;border-radius:8px;padding:0 5px;font:700 10px/13px system-ui,sans-serif;white-space:nowrap;z-index:4;transition:left 1s linear;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .sbus small{font-weight:400;margin-left:3px}
 .sbus.live{background:var(--live)}.sbus.old{background:var(--old)}
+.sbus.focus{outline:2px solid #ffcf33}
 #hero{padding:4px 16px 8px;touch-action:none}
 #heroTop{font-size:12px;color:var(--mut);display:flex;justify-content:space-between;gap:8px}
 #heroMain{display:flex;align-items:baseline;gap:10px;margin-top:2px}
@@ -105,7 +115,7 @@ tr.past td{color:var(--mut)}
 .medot{width:16px;height:16px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 4px #000}
 /* banners & toast */
 #upd{display:none;position:absolute;z-index:1002;top:calc(56px + env(safe-area-inset-top));left:8px;right:8px;background:#fff3cd;color:#000;border:1px solid #c90;border-radius:10px;padding:8px 10px;font-size:13px}
-#toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,240px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,272px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 #toast.on{opacity:.95}
 </style>
 </head>
@@ -158,8 +168,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v26";
-const BUILD="2026-11-24T19:48:49Z";
+const VERSION="v27";
+const BUILD="2026-11-24T19:54:54Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -820,7 +830,9 @@ function renderMap(model){
   const keep=new Set();
   for(const b of model){
     keep.add(b.ref);
-    if(b.fx.length>1) L.polyline(b.fx.map(f=>[f.lat,f.lon]),{color:b.stale?"#9aa0a6":b.live?"#2e7d32":"#d32f2f",weight:3,opacity:.55}).addTo(trailLayer);
+    // trail along the road (reports are ~1 min apart: straight lines between them would cut corners)
+    if(b.fx.length>1&&routePts.length>1){ const first=snap(b.fx[0].lat,b.fx[0].lon);
+      if(first.d<200&&b.off<200&&b.along>first.along+20) L.polyline(slice(first.along,b.along),{color:b.stale?"#9aa0a6":b.live?"#2e7d32":"#d32f2f",weight:3,opacity:.55}).addTo(trailLayer); }
     let e=busMarkers.get(b.ref);
     if(!e){e={m:new SmoothMarker([b.r.lat,b.r.lon],{icon:busIcon(b),zIndexOffset:1000}).addTo(map)};busMarkers.set(b.ref,e);}
     else{e.m.setIcon(busIcon(b)); animate(e,[b.r.lat,b.r.lon]);}
@@ -930,9 +942,13 @@ function render(){
 
 // ---------- subway-style strip: one line, stations spaced by sqrt(planned minutes) ----------
 // Square root keeps long highway gaps visibly long (~4x a city gap instead of ~19x); inside a gap, position is linear.
-let stripX0=null;   // per station: left position in %
+// Oriented like the map (west on the left), so it flips for lines heading west. All stations named (angled labels are
+// accepted practice on single-line strip maps); the part already passed by the bus coming to my stop is dimmed and
+// its next stops are emphasised; jams get a stripe pattern so colour is not the only cue.
+let stripX0=null, stripFlip=false;
 function stripLayout(){
   if(stops.length<2){stripX0=null;return;}
+  stripFlip=stops[stops.length-1].lon<stops[0].lon;          // heading west: origin on the right, like the map
   const w=[];
   for(let i=0;i<stops.length-1;i++){
     const dt=stops[i+1].off-stops[i].off, da=stops[i+1].along-stops[i].along;
@@ -940,6 +956,7 @@ function stripLayout(){
   }
   const tot=w.reduce((a,b)=>a+b,0), M=3; let x=M; stripX0=[x];
   for(const v of w){x+=v/tot*(100-2*M); stripX0.push(x);}
+  if(stripFlip) stripX0=stripX0.map(v=>100-v);
 }
 function stripX(a){
   if(!stripX0) return 0;
@@ -948,14 +965,21 @@ function stripX(a){
     if(a<=B){const f=B>A?(a-A)/(B-A):0; return stripX0[i]+f*(stripX0[i+1]-stripX0[i]);}}
   return stripX0[stripX0.length-1];
 }
-const shortName=n=>String(n).split("/")[0].replace(/^ת\. ?רכבת /,"").replace(/^ת\.רק''ל /,"").trim();
+const shortName=n=>String(n).split("/")[0].replace(/^ת\. ?רכבת /,"").replace(/^ת\.רק''ל /,"").replace(/^ת\. מרכזית /,"").trim();
 function busNowAlong(b){ const age=Math.max(0,(Date.now()-tms(b.r))/1000);
   return b.stale?b.along:(haveTraffic()?advance(b.along,age):Math.min(routeLen(),b.along+b.sp*age)); }
+function focusBus(model){ // the bus coming to my stop (else the leading active bus)
+  const p=myStop()?myStopPredictions(model):[]; const r=p.find(x=>x.ref&&model.some(b=>b.ref===x.ref));
+  return r?model.find(b=>b.ref===r.ref):model.find(b=>!b.stale)||null;
+}
 function renderStrip(model){
   const el=$("stripIn"); if(!el) return;
   stripLayout(); if(!stripX0){el.innerHTML="";return;}
+  const fb=focusBus(model), passedA=fb?busNowAlong(fb):-1;
+  const nextIdx=fb?stops.map((s,i)=>i).filter(i=>stops[i].along>passedA+30).slice(0,4):[];
+  const L=(a0,a1)=>{const x0=stripX(a0),x1=stripX(a1);return {l:Math.min(x0,x1),w:Math.max(.3,Math.abs(x1-x0))};};
   let h="";
-  // line, coloured by traffic where measured
+  // line: traffic colour where measured; jams striped; passed part dimmed
   for(let i=0;i<stops.length-1;i++){
     const A=stops[i].along,B=stops[i+1].along; let pieces=[];
     if(prof&&B>A){ let cur=null;
@@ -963,28 +987,39 @@ function renderStrip(model){
         if(cur&&cur.lv===lv) cur.a1=a1; else { if(cur) pieces.push(cur); cur={lv,a0,a1}; } }
       if(cur) pieces.push(cur); }
     if(!pieces.length) pieces=[{lv:null,a0:A,a1:B}];
-    for(const p of pieces){const x0=stripX(p.a0),x1=stripX(p.a1);
-      h+=`<i class="sl" style="left:${x0}%;width:${Math.max(.3,x1-x0)}%;background:${p.lv==null?"var(--acc)":LEVEL_COLOR[p.lv]};opacity:${p.lv==null?.45:1}"></i>`;}
-    const gapMin=(stops[i+1].off-stops[i].off)/60;
-    if(gapMin>=10&&stripX0[i+1]-stripX0[i]>14) h+=`<span class="sgap" style="left:${(stripX0[i]+stripX0[i+1])/2}%">~${Math.round(gapMin)} min</span>`;
+    for(const p of pieces){
+      // split at the focus bus: before it = passed (dimmed)
+      const parts=(passedA>p.a0&&passedA<p.a1)?[{...p,a1:passedA,past:true},{...p,a0:passedA,past:false}]:[{...p,past:p.a1<=passedA}];
+      for(const q of parts){ const g=L(q.a0,q.a1);
+        const bg=q.lv==null?"var(--acc)":q.lv===2?"repeating-linear-gradient(135deg,#c62828 0 4px,#7f0000 4px 7px)":LEVEL_COLOR[q.lv];
+        h+=`<i class="sl${q.lv===2?" jam":q.lv===1?" slow":""}${q.past?" past":""}" style="left:${g.l}%;width:${g.w}%;background:${bg};${q.lv==null&&!q.past?"opacity:.5;":""}"></i>`; }
+    }
+    const gapMin=(stops[i+1].off-stops[i].off)/60, gx=Math.abs(stripX0[i+1]-stripX0[i]);
+    if(gapMin>=10&&gx>14) h+=`<span class="sgap" style="left:${(stripX0[i]+stripX0[i+1])/2}%">~${Math.round(gapMin)} min ${stripFlip?"◀":"▶"}</span>`;
+    else if(gx>7) h+=`<span class="sarr" style="left:${(stripX0[i]+stripX0[i+1])/2}%">${stripFlip?"◀":"▶"}</span>`;
   }
-  // stations
-  stops.forEach((s,i)=>{const mine=s.code===MY_STOP;
-    h+=`<b class="sd${mine?" mine":""}" data-code="${esc(s.code)}" style="left:${stripX0[i]}%" title="${esc(s.name)}"></b>`;});
-  const first=stops[0], last=stops[stops.length-1], my=myStop();
-  h+=`<span class="slab end0">${esc(shortName(first.name))}</span><span class="slab end1">${esc(shortName(last.name))}</span>`;
-  if(my) h+=`<span class="slab mine" style="left:${stripX(my.along)}%">${esc(shortName(my.name))}</span>`;
-  // buses: last fix (small dot) and position now (pill)
+  // stations, all named (angled); my stop with its ETA
+  const p=myStop()?myStopPredictions(model):[], myEta=p.length?p[0].t:null, my=myStop();
+  stops.forEach((s,i)=>{
+    const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
+    h+=`<b class="sd${mine?" mine":""}${past?" past":""}${nx?" next":""}" data-code="${esc(s.code)}" style="left:${stripX0[i]}%" title="${esc(s.name)}"></b>`;
+    const lab=esc(shortName(s.name))+(mine&&myEta?` · ${Math.max(0,Math.round((myEta-Date.now())/60000))}′`:"");
+    h+=`<span class="slab${mine?" mine":""}${past?" past":""}${nx?" next":""}" style="left:${stripX0[i]}%"><span>${lab}</span></span>`;
+  });
+  // destination
+  h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
+  // buses below the line: last fix (dot) and position now (pill)
   for(const b of model){
     const cls=b.stale?"old":b.live?"live":"";
     h+=`<i class="sfix ${cls}" style="left:${stripX(b.along)}%"></i>`;
-    h+=`<span class="sbus ${cls}" id="sb-${esc(b.ref)}" style="left:${stripX(busNowAlong(b))}%">${esc(title.num)}${b.start!=null?`<small>${hm(b.start)}</small>`:""}</span>`;
+    h+=`<span class="sbus ${cls}${fb&&fb.ref===b.ref?" focus":""}" id="sb-${esc(b.ref)}" style="left:${stripX(busNowAlong(b))}%">${esc(title.num)}${b.start!=null?`<small>${hm(b.start)}</small>`:""}</span>`;
   }
   el.innerHTML=h;
 }
 function tickStrip(){ if(document.hidden||!stripX0) return;
   for(const b of lastModel){const e=document.getElementById("sb-"+b.ref); if(e) e.style.left=stripX(busNowAlong(b))+"%";} }
 setInterval(tickStrip,1000);
+setInterval(()=>{ if(!document.hidden&&lastModel) renderStrip(lastModel); },30000);   // keep dimming / ETA current
 
 // ---------- refresh loop ----------
 // Poll every minute only when it matters: a live bus is moving, or the next bus at my stop is due within 20 min.
@@ -1036,7 +1071,7 @@ setInterval(checkVersion,5*60000);
 setInterval(()=>{ if(!document.hidden&&sections.length&&Date.now()-probeAt>PROBE_MS) fetchProbes(); },20000);
 
 // ---------- UI: sheet, tabs, buttons ----------
-const SNAP=()=>[240,Math.round(innerHeight*.5),Math.round(innerHeight*.88)];
+const SNAP=()=>[272,Math.round(innerHeight*.5),Math.round(innerHeight*.88)];
 let sheetIdx=0;
 function setSheet(i){sheetIdx=Math.max(0,Math.min(2,i));const h=SNAP()[sheetIdx];document.documentElement.style.setProperty("--h",h+"px");
   if(sheetIdx===2&&$("p-set").classList.contains("sel")) $("dbg").textContent=LOG.join("\n");}
