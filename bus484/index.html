@@ -117,6 +117,7 @@ tr.past td{color:var(--mut)}
 .medot{width:16px;height:16px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 4px #000}
 /* banners & toast */
 #upd{display:none;position:absolute;z-index:1002;top:calc(56px + env(safe-area-inset-top));left:8px;right:8px;background:#fff3cd;color:#000;border:1px solid #c90;border-radius:10px;padding:8px 10px;font-size:13px}
+#updBtn{background:#1565c0;color:#fff;border:0;border-radius:999px;padding:6px 14px;margin-left:8px;font-weight:600;font-size:13px}
 #toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,272px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 #toast.on{opacity:.95}
 </style>
@@ -170,8 +171,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v29";
-const BUILD="2026-11-24T19:59:41Z";
+const VERSION="v30";
+const BUILD="2026-11-24T20:01:43Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1083,7 +1084,7 @@ window.addEventListener("online",()=>{log("online");if(!inFlight)refresh();});
 async function checkVersion(){
   try{const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;const v=(await r.json()).version;
     if(v&&v!==VERSION){const u=$("upd");u.style.display="block";
-      u.innerHTML=`New version ${esc(v)} available (you have ${VERSION}). <button class="chip" id="updBtn">Reload</button>`;
+      u.innerHTML=`New version ${esc(v)} available (you have ${VERSION}). <button id="updBtn">Reload</button>`;
       $("updBtn").onclick=()=>{const p=new URLSearchParams(location.search);p.set("v",v);location.replace(location.pathname+"?"+p);};}}
   catch(e){log("version check failed: "+e.message);}
 }
