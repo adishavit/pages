@@ -68,6 +68,37 @@ Takeaways:
   "Timetable-like" is a proxy, not the published timetable. One morning only.
 - The archive's `distance_from_journey_start` is populated (0 nulls), so replay doesn't need map matching.
 
+### Congestion-model replay (the app's own model, 2026-11-24, 06:00–21:00)
+Method: for each completed trip, at 10/20/30 min before its actual arrival at the last stop, the app's congestion
+profile is rebuilt from *only* the positions of all buses along the route in the preceding ~20 min, available by then
+(each record's feed-snapshot time + publishing delay of 1 or 6 min), and arrival is predicted. Same moments for the
+other methods. "Corrected" = constant offset learned from the *other* trips of the line (leave-one-out, fair).
+
+Average error, minutes, 1 min delay (positive bias = predicted too late):
+
+| line | trips | congestion model | bias | **corrected** | recent trips | timetable pace (corrected) |
+|---|---|---|---|---|---|---|
+| 480 TLV→Jerusalem express, 63 km | 9 | 5.5 / 5.3 / 6.2 | +5…+6 | **1.4 / 2.3 / 2.1** | 2.6 / 5.2 / 4.4 | 3.2 / 6.8 / 10.6 (1.4 / 3.1 / 5.8) |
+| 484 TLV→Mevaseret, hourly, 58 km | 10 | 4.5 / 4.8 / 4.4 | +3…+5 | **2.2 / 2.2 / 3.7** | 2.7 / 5.2 / 13.1 | 1.3 / 5.4 / 10.1 |
+| 19 Jerusalem city, 17 km, 45 stops | 13 | 3.2 / 6.0 / 7.6 | +3…+8 | **1.6 / 2.9 / 3.2** | 2.0 / 3.2 / 6.0 | 3.7 / 8.1 / 13.3 (1.2 / 2.5 / 3.8) |
+
+Findings:
+- The congestion model is consistently **too late**, but its error is mostly a stable offset. Once corrected, it's the
+  best or close to it, and stays good at 30 min out where recent trips (hourly lines) and the timetable fall apart.
+- Two probable sources of the offset: (a) city sections are measured from local buses (slower than an express);
+  (b) the fixed 20 s stop allowance per intermediate station double-counts on many-stop lines (line 19: bias grows with
+  stops ahead).
+- Next: per-line/per-section correction learned from replays (the "learning" step), and test DWELL=0 / dwell only at
+  stops where this line actually stops; prefer probes of similar buses (same line/express) in city sections.
+- Raw own-speed extrapolation is unusable beyond ~10 min (484: 52 min average error at 30 min).
+- The publishing delay (1 vs 6 min) mattered little for the congestion model (5.3 vs 6.0 at 20 min on 480).
+- The government feed's own delay: median ~30 s from GPS time to feed snapshot (90%: 2 min, 99%: 4 min).
+- Archive API quirk: limit=20000 (and 5000 on box queries) is rejected as a network error; use limit=1000 + offset.
+
+### Resilience found 2026-11-25 00:00
+- Open Bus hadn't published 25 Nov's timetable at midnight (0 routes for any line). v54: fall back to the latest
+  comparable day (Sun–Thu ↔ Sun–Thu; Fri/Sat ↔ a week earlier), shifted, labelled in the status line.
+
 ## Other open items
 - HTTPS for videocortex.io (unblocks 📍 and alerts; main security gap).
 - Relay v7 is written (tools/curlbus-relay-worker.js) but needs a manual paste into Cloudflare.
