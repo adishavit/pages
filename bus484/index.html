@@ -20,8 +20,10 @@
   .far .stoplbl.n{display:none}
   .stoplbl.e{font-weight:700}
   .stoplbl.k{background:#ffe08a;border-color:#c60;font-weight:700}
-  .busicon{background:#d32f2f;color:#fff;border:2px solid #fff;border-radius:50%;width:30px;height:30px;box-sizing:border-box;
-    line-height:26px;text-align:center;font-weight:700;font-size:11px;box-shadow:0 0 4px #000}
+  .busicon{background:#d32f2f;color:#fff;border:2px solid #fff;border-radius:12px;min-width:44px;padding:1px 4px;box-sizing:border-box;
+    text-align:center;font-weight:700;font-size:13px;line-height:15px;box-shadow:0 0 4px #000;white-space:nowrap;transform:translate(-50%,-50%);display:inline-block}
+  .busicon small{display:block;font-size:10px;font-weight:400;line-height:11px}
+  .busicon.live{background:#2e7d32}
   #ver{font-size:11px;color:#666;margin-bottom:4px}
   #panel.big{height:60vh} #map.big{bottom:60vh}
   details{margin-top:6px} summary{font-size:12px;color:#06c}
@@ -53,8 +55,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
-const VERSION = "v7";
-const BUILD = "2026-11-24T16:38:56Z";   // UTC time this file was built/pushed
+const VERSION = "v8";
+const BUILD = "2026-11-24T16:45:08Z";   // UTC time this file was built/pushed
 const PAGE_LOADED = Date.now();
 const LOG = [];
 function log(msg){
@@ -98,18 +100,18 @@ const hhmm = ms => new Date(ms).toLocaleTimeString("he-IL",{timeZone:"Asia/Jerus
 
 // Stops from GTFS ride 164125712 (2026-11-24). Fallback; replaced from the API at load if that works.
 let stops = [
- [1,"ת. רכבת תל אביב- סבידור/רציפים A",32.083157,34.796089],
- [2,"מתחם מידטאון/דרך מנחם בגין",32.080071,34.795266],
- [3,"קניון עזריאלי/דרך מנחם בגין",32.074584,34.790607],
- [4,"ת.רק''ל יהודית/דרך מנחם בגין",32.070002,34.787954],
- [5,"ת.רק''ל קרליבך/דרך מנחם בגין A",32.065556,34.783121],
- [6,"ת. רכבת ההגנה/החרש",32.055692,34.783286],
- [7,"דרך קיבוץ גלויות/כביש 1",32.046861,34.784605],
- [8,"מחלף שורש",31.800293,35.077409],
- [9,"מחלף חמד",31.800330,35.126238],
- [10,"הראל/יסמין",31.799962,35.148045],
- [11,"תחנת משטרה/הראל",31.802479,35.149484],
- [12,"מרכז ספורט",31.804484,35.151863]];
+ [1,"ת. רכבת תל אביב- סבידור/רציפים A",32.083157,34.796089,20001],
+ [2,"מתחם מידטאון/דרך מנחם בגין",32.080071,34.795266,21705],
+ [3,"קניון עזריאלי/דרך מנחם בגין",32.074584,34.790607,21472],
+ [4,"ת.רק''ל יהודית/דרך מנחם בגין",32.070002,34.787954,20728],
+ [5,"ת.רק''ל קרליבך/דרך מנחם בגין A",32.065556,34.783121,20750],
+ [6,"ת. רכבת ההגנה/החרש",32.055692,34.783286,20353],
+ [7,"דרך קיבוץ גלויות/כביש 1",32.046861,34.784605,25069],
+ [8,"מחלף שורש",31.800293,35.077409,5524],
+ [9,"מחלף חמד",31.800330,35.126238,640],
+ [10,"הראל/יסמין",31.799962,35.148045,5664],
+ [11,"תחנת משטרה/הראל",31.802479,35.149484,5827],
+ [12,"מרכז ספורט",31.804484,35.151863,2454]];
 
 let map=null, stopLayer=null, busLayer=null, routeLine=null, fitted=false;
 if (HAVE_MAP){
@@ -153,7 +155,7 @@ async function loadStops(){
     rs.sort((a,b)=>a.stop_sequence-b.stop_sequence);
     const ok = rs.filter(r=>Number.isFinite(r.gtfs_stop__lat)&&Number.isFinite(r.gtfs_stop__lon));
     log(`stops: ${ok.length}/${rs.length} valid from API (ride ${rides[0].id})`);
-    if(ok.length>3){ stops = ok.map(r=>[r.stop_sequence,r.gtfs_stop__name,r.gtfs_stop__lat,r.gtfs_stop__lon]); road=null; drawStops(); render(); loadRoad(); }
+    if(ok.length>3){ stops = ok.map(r=>[r.stop_sequence,r.gtfs_stop__name,r.gtfs_stop__lat,r.gtfs_stop__lon,r.gtfs_stop__code]); road=null; drawStops(); render(); loadRoad(); }
   }catch(e){ log("stops lookup failed, using built-in stops: "+e.message); }
 }
 
@@ -164,12 +166,12 @@ async function probe(url){
   catch(e){ log("probe: no-cors also failed ("+e.name+": "+e.message+") => network/DNS/firewall problem"); }
   finally{clearTimeout(t);}
 }
-async function getJSON(label,url,ms=TIMEOUT_MS,wantArray=true){
+async function getJSON(label,url,ms=TIMEOUT_MS,wantArray=true,headers={}){
   const t0=performance.now();
   log(`-> ${label} GET ${url}`);
   const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),ms);
   try{
-    const res=await fetch(url,{signal:ctl.signal,cache:"no-store"});
+    const res=await fetch(url,{signal:ctl.signal,cache:"no-store",headers});
     log(`<- ${label} HTTP ${res.status} after ${Math.round(performance.now()-t0)}ms, type=${res.type}`);
     if(!res.ok) throw new Error(`${label}: HTTP ${res.status}`);
     const data=await res.json();
@@ -261,7 +263,13 @@ $("btnFit").addEventListener("click",()=>{ if(HAVE_MAP&&routeLine) map.fitBounds
 
 // ---- state: fixes accumulate across refreshes; later refreshes fetch only what is new ----
 const vehicles = new Map();   // vehicle ref -> Map(fix id -> row)
-let newestMs = null;          // newest fix seen (data time, not phone time)
+let newestMs = null;          // newest fix seen from any source (data time, not phone time)
+let strideNewestMs = null;    // newest Stride fix (Stride query cursor; Stride lags ~10 min)
+const rideStart = new Map();  // vehicle ref -> scheduled trip start (ms), from Stride
+// Live source: curlbus.app relays the Ministry's real-time SIRI feed. Override with ?relay=https://... (remembered).
+let LIVE_BASE = "https://curlbus.app";
+try{ const q=new URLSearchParams(location.search).get("relay"); if(q){ localStorage.setItem("relay484",q); } const r=localStorage.getItem("relay484"); if(r) LIVE_BASE=r.replace(/\/$/,""); }catch(_){}
+let liveState="untried", liveRetryAt=0, liveOkMs=null;
 let inFlight=false, timer=null, lastRun=0, nextAt=0, okCount=0, failCount=0;
 
 function q(fromMs,toMs){
@@ -271,8 +279,8 @@ function q(fromMs,toMs){
 }
 async function fetchPositions(){
   const now=Date.now(), to=now+5*60000;     // 5 min margin for phone clock skew
-  if(newestMs){                             // incremental: from 1 min before the newest fix we have
-    const from=Math.max(newestMs-60000, now-FIRST_WINDOW_MIN*60000);
+  if(strideNewestMs){                       // incremental: from 1 min before the newest Stride fix
+    const from=Math.max(strideNewestMs-60000, now-FIRST_WINDOW_MIN*60000);
     return getJSON("positions-incremental", q(from,to));
   }
   try{ return await getJSON(`positions-${FIRST_WINDOW_MIN}min`, q(now-FIRST_WINDOW_MIN*60000,to)); }
@@ -281,6 +289,37 @@ async function fetchPositions(){
     return getJSON("positions-20min", q(now-20*60000,to));   // still longer than the observed lag
   }
 }
+async function fetchLive(){
+  if(Date.now()<liveRetryAt) return null;
+  const codes=stops.map(s=>s[4]).filter(Boolean);
+  if(!codes.length){ log("live: no stop codes"); return null; }
+  try{
+    const d=await getJSON("live",`${LIVE_BASE}/${codes.join("+")}`,20000,false,{Accept:"application/json"});
+    const out=[], visits=d&&d.visits||{};
+    if(d&&d.errors) log("live: source errors: "+JSON.stringify(d.errors).slice(0,300));
+    const respMs=Date.parse(String(d&&d.timestamp||"").replace(" ","T"));
+    let total=0;
+    for(const code in visits) for(const v of visits[code]||[]){
+      total++;
+      if(String(v.line_id)!==String(LINE_REF) || !v.location) continue;
+      const t=Date.parse(String(v.timestamp||"").replace(" ","T"));
+      const ms=Number.isFinite(t)?t:respMs;
+      if(!Number.isFinite(ms)) continue;
+      const vr=String(v.vehicle_ref ?? ("trip:"+v.trip_id));
+      out.push({id:`L:${vr}:${ms}`,live:true,recorded_at_time:new Date(ms).toISOString(),lat:+v.location.lat,lon:+v.location.lon,
+        velocity:null,siri_ride__vehicle_ref:vr,eta:v.eta,stop:code});
+    }
+    log(`live: ${total} visits at ${codes.length} stops, ${out.length} with a 484 position`);
+    liveState="ok"; liveOkMs=Date.now();
+    return out;
+  }catch(e){
+    liveState=/CORS|network/.test(e.message)?"blocked":"error";
+    liveRetryAt=Date.now()+5*60000;   // don't hammer; retry in 5 min
+    log(`live source ${liveState}: ${e.message}. Using Stride only; retry in 5 min. Fix: deploy the relay and open with ?relay=<url>`);
+    return null;
+  }
+}
+
 function merge(rows){
   let added=0;
   for(const r of rows){
@@ -290,6 +329,10 @@ function merge(rows){
     const m=vehicles.get(ref); if(!m.has(r.id)) added++;
     m.set(r.id,r);
     if(newestMs===null||tms(r)>newestMs) newestMs=tms(r);
+    if(!r.live){
+      if(strideNewestMs===null||tms(r)>strideNewestMs) strideNewestMs=tms(r);
+      const st=Date.parse(r.siri_ride__scheduled_start_time); if(Number.isFinite(st)) rideStart.set(ref,st);
+    }
   }
   if(newestMs!==null){
     const cutoff=newestMs-KEEP_MIN*60000;
@@ -316,7 +359,9 @@ function render(){
     list.appendChild(div);
   }
   for(const v of vs){
-    const r=v.last, behind=(newestMs-tms(r))/60000, stale=behind>STALE_MIN, label=v.ref.slice(-3);
+    const r=v.last, behind=((r.live?newestMs:(strideNewestMs??newestMs))-tms(r))/60000, stale=behind>STALE_MIN;  // compare with own source
+    const dep=rideStart.has(v.ref)?new Date(rideStart.get(v.ref)).toLocaleTimeString("he-IL",{timeZone:"Asia/Jerusalem",hour:"2-digit",minute:"2-digit"}):"";
+    const label=`484${dep?`<small>${dep} dep.</small>`:""}`, name=`484${dep?" ("+dep+" departure)":""}`;
     const [near,nd]=nearestStop(r.lat,r.lon);
     // estimate: progress along the route at this bus's recent average speed, for the time since its last fix
     let est=null;
@@ -332,22 +377,22 @@ function render(){
     }
     if(HAVE_MAP){
       if(v.fx.length>1) L.polyline(v.fx.map(f=>[f.lat,f.lon]),{color:stale?"#999":"#d32f2f",weight:3,opacity:.6}).addTo(busLayer);
-      L.marker([r.lat,r.lon],{icon:L.divIcon({className:"",html:`<div class="busicon${stale?" old":""}">${esc(label)}</div>`,iconSize:[30,30],iconAnchor:[15,15]})})
-        .bindTooltip(`Bus …${esc(label)}: last fix ${hhmm(tms(r))}`).addTo(busLayer);
+      L.marker([r.lat,r.lon],{icon:L.divIcon({className:"",html:`<div class="busicon${stale?" old":r.live?" live":""}">${label}</div>`,iconSize:[0,0],iconAnchor:[0,0]})})
+        .bindTooltip(`${esc(name)}: last fix ${hhmm(tms(r))}${r.live?" (live)":" (Stride)"}`).addTo(busLayer);
       if(est && est.along-est.from>50){
         L.polyline(slice(est.from,est.along),{color:"#d32f2f",weight:3,dashArray:"4 6"}).addTo(busLayer);
-        L.marker(est.p,{icon:L.divIcon({className:"",html:`<div class="busicon est">${esc(label)}</div>`,iconSize:[30,30],iconAnchor:[15,15]})})
-          .bindTooltip(`Bus …${esc(label)}: ESTIMATED now`).addTo(busLayer);
+        L.marker(est.p,{icon:L.divIcon({className:"",html:`<div class="busicon est">${label}<small>est.</small></div>`,iconSize:[0,0],iconAnchor:[0,0]})})
+          .bindTooltip(`${esc(name)}: ESTIMATED now`).addTo(busLayer);
       }
     }
     let estTxt="";
-    if(est){
+    if(est && est.along-est.from>50){
       const [es]=nearestStop(est.p[0],est.p[1]);
       estTxt=`<br>Est. now (${est.kmh.toFixed(0)} km/h avg × ${est.ageMin.toFixed(0)} min): ${(est.along/1000).toFixed(1)} km along, near <span dir="rtl">${esc(es[1])}</span>`;
       if(meSnap) estTxt+=` · <b>${((est.along-meSnap.along)/1000).toFixed(1)} km ${est.along>=meSnap.along?"ahead of":"behind"} you</b>`;
     }
     const div=document.createElement("div"); div.className="bus"+(stale?" stale":"");
-    div.innerHTML=`<b>Bus …${esc(label)}</b> (vehicle ${esc(v.ref)}) · last fix ${hhmm(tms(r))}, ${esc(r.velocity ?? "?")} km/h?`+
+    div.innerHTML=`<b>${esc(name)}</b> · ${r.live?"🟢 live":"Stride"} fix ${hhmm(tms(r))}${r.velocity!=null?`, ${esc(r.velocity)} km/h?`:""} · <small>vehicle ${esc(v.ref)}</small>`+
       `${stale?` · <b>no update for ${behind.toFixed(0)} min</b>`:""}<br>`+
       `At fix: near <span dir="rtl">${esc(near[1])}</span> (${Math.round(nd)} m)`+estTxt;
     list.appendChild(div);
@@ -364,7 +409,11 @@ async function refresh(){
   log("refresh start");
   st.className=""; st.textContent = newestMs ? "Updating…" : `Fetching positions (last ${FIRST_WINDOW_MIN} min)…`;
   try{
-    const rows=await fetchPositions();
+    const [sr,lr]=await Promise.allSettled([fetchPositions(),fetchLive()]);
+    const liveRows=lr.status==="fulfilled"&&lr.value?lr.value:[];
+    if(sr.status==="rejected" && !liveRows.length) throw sr.reason;
+    const rows=(sr.status==="fulfilled"?sr.value:[]).concat(liveRows);
+    if(sr.status==="rejected") log("Stride failed but live source worked: "+sr.reason.message);
     if(rows.length>=LIMIT) log(`WARNING: hit limit ${LIMIT}; some fixes may be missing`);
     const added=merge(rows);
     if(rows[0] && okCount===0) log("row keys: "+Object.keys(rows[0]).join(","));
@@ -372,7 +421,7 @@ async function refresh(){
     const lag = newestMs ? ((Date.now()-newestMs)/60000).toFixed(0) : null;
     log(`refresh ok: ${rows.length} rows, ${added} new, ${n} vehicles, newest=${newestMs?new Date(newestMs).toISOString():"-"}`);
     st.innerHTML = (n
-      ? `<b>${n} bus(es)</b> · data as of ${hhmm(newestMs)} (<b>${lag} min behind now</b>, source delay)`
+      ? `<b>${n} bus(es)</b> · data as of ${hhmm(newestMs)} (<b>${lag} min behind now</b>) · live feed: ${liveState==="ok"?"✅":liveState==="untried"?"…":"❌ "+liveState+" (Stride only)"}`
       : `No buses on line 484 (→Mevaseret) in the last ${KEEP_MIN} min of data${newestMs?` · data as of ${hhmm(newestMs)}`:""}`)
       + ` · checked ${hhmm(Date.now())} <button onclick="refresh()">Refresh now</button>`;
   }catch(e){
