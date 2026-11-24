@@ -55,8 +55,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
-const VERSION = "v12";
-const BUILD = "2026-11-24T18:21:04Z";   // UTC time this file was built/pushed
+const VERSION = "v13";
+const BUILD = "2026-11-24T18:23:34Z";   // UTC time this file was built/pushed
 const PAGE_LOADED = Date.now();
 const LOG = [];
 function log(msg){
@@ -294,8 +294,21 @@ async function fetchPositions(){
 // Every refresh: terminus + Shoresh (together they see buses heading out of TLV and on the highway),
 // plus one rotating stop. Max 2 requests at a time, generous timeout: curlbus is a slow hobby server.
 // ONE request per refresh (curlbus rate-limits): alternate terminus and Shoresh; terminus sees every bus heading to it.
-const LIVE_FIXED = [], LIVE_ROTATE = [12, 8, 12, 5];
+const LIVE_FIXED = [], LIVE_ROTATE = [12, 5, 8, 12, 5, 10];
 let liveTurn = 0, liveLastErr = "";
+// Ministry/operator ETAs from the live feed: vehicle ref -> Map(stop code -> {eta ms, seen ms})
+const liveEta = new Map();
+function hm(ms){ return new Date(ms).toLocaleTimeString("he-IL",{timeZone:"Asia/Jerusalem",hour:"2-digit",minute:"2-digit"}); }
+function stopByCode(c){ return stops.find(s=>String(s[4])===String(c)); }
+function upcomingEtas(vr){
+  const m=liveEta.get(vr); if(!m) return [];
+  const now=Date.now(), out=[];
+  for(const [code,e] of m){
+    if(e.eta<now-60000 || now-e.seen>15*60000) continue;   // passed, or info too old
+    const st=stopByCode(code); out.push({code,eta:e.eta,name:st?st[1]:("stop "+code),seq:st?st[0]:99});
+  }
+  return out.sort((a,b)=>a.eta-b.eta);
+}
 function parseTs(x){ const t=Date.parse(String(x||"").replace(" ","T")); return Number.isFinite(t)?t:NaN; }
 async function fetchLive(){
   if(Date.now()<liveRetryAt) return null;
@@ -325,6 +338,11 @@ async function fetchLive(){
     for(const code in (d&&d.visits)||{}) for(const v of d.visits[code]||[]){
       total++;
       if(String(v.line_id)!==String(LINE_REF)) continue;
+      const vrE=String(v.vehicle_ref ?? ("trip:"+v.trip_id)), etaMs=parseTs(v.eta);
+      if(Number.isFinite(etaMs)){
+        if(!liveEta.has(vrE)) liveEta.set(vrE,new Map());
+        liveEta.get(vrE).set(String(code),{eta:etaMs,seen:Date.now()});
+      }
       if(!v.location){ noLoc++; continue; }
       // visit timestamps are sometimes hours off; trust them only if within 10 min before the response time
       let ms=parseTs(v.timestamp);
@@ -413,12 +431,25 @@ function render(){
       estTxt=`<br>Est. now (${est.kmh.toFixed(0)} km/h avg × ${est.ageMin.toFixed(0)} min): ${(est.along/1000).toFixed(1)} km along, near <span dir="rtl">${esc(es[1])}</span>`;
       if(meSnap) estTxt+=` · <b>${((est.along-meSnap.along)/1000).toFixed(1)} km ${est.along>=meSnap.along?"ahead of":"behind"} you</b>`;
     }
+    const ups=upcomingEtas(v.ref);
+    if(ups.length) estTxt+=`<br>🕓 <b>ETA</b> (Ministry): `+ups.map(u=>`<span dir="rtl">${esc(u.name)}</span> <b>${hm(u.eta)}</b>`).join(" · ");
     const div=document.createElement("div"); div.className="bus"+(stale?" stale":"");
     div.innerHTML=`<b>${esc(name)}</b> · ${r.live?"🟢 live":"Stride"} fix ${hhmm(tms(r))}${r.velocity!=null?`, ${esc(r.velocity)} km/h?`:""} · <small>vehicle ${esc(v.ref)}</small>`+
       `${stale?` · <b>no update for ${behind.toFixed(0)} min</b>`:""}<br>`+
       `At fix: near <span dir="rtl">${esc(near[1])}</span> (${Math.round(nd)} m)`+estTxt;
     list.appendChild(div);
   }
+  const shown=new Set(vs.map(v=>v.ref));
+  const waiting=[...liveEta.keys()].filter(vr=>!shown.has(vr)).map(vr=>({vr,ups:upcomingEtas(vr)})).filter(x=>x.ups.length)
+    .sort((a,b)=>a.ups[0].eta-b.ups[0].eta);
+  for(const w of waiting){
+    const div=document.createElement("div"); div.className="bus";
+    div.innerHTML=`<b>484</b> · not moving yet / no position · <small>vehicle ${esc(w.vr)}</small><br>🕓 <b>ETA</b> (Ministry): `+
+      w.ups.map(u=>`<span dir="rtl">${esc(u.name)}</span> <b>${hm(u.eta)}</b>`).join(" · ");
+    list.appendChild(div);
+  }
+  // prune ETA store
+  for(const [vr,m] of liveEta){ for(const [c,e] of m) if(Date.now()-e.seen>30*60000||e.eta<Date.now()-10*60000) m.delete(c); if(!m.size) liveEta.delete(vr); }
   return vs.length;
 }
 
