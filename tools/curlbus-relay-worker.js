@@ -1,6 +1,7 @@
-// Cloudflare Worker v3: relay for the bus tracker page.
+// Cloudflare Worker v4: relay for the bus tracker page.
 //   GET /<stop_code>        -> curlbus.app stop arrivals (JSON), CORS-enabled
 //   GET /osrm/<lon,lat;...> -> OSRM road geometry through the given points
+//   GET /stride/siri_vehicle_locations/list?<box+time> -> Stride bus positions in a small map box (traffic probes)
 // Deploy: dash.cloudflare.com -> Workers & Pages -> your worker -> Edit code -> paste -> Deploy.
 //
 // Load protection (so sharing the page does not hammer curlbus / OSRM):
@@ -14,7 +15,10 @@
 
 const ALLOWED_ORIGINS = ["https://videocortex.io", "http://videocortex.io", "https://adishavit.github.io"];
 const STOP_FRESH_MS = 45_000, STOP_STALE_MS = 10 * 60_000, OSRM_TTL_MS = 24 * 3600_000;
-const PER_IP_PER_MIN = 30;
+const PER_IP_PER_MIN = 60;          // a page now makes ~1 live + ~16 probe requests per few minutes
+const STRIDE_FRESH_MS = 90_000;      // probe boxes: one upstream query per box per 90 s
+const STRIDE_KEYS = ["lat__greater_or_equal", "lat__lower_or_equal", "lon__greater_or_equal", "lon__lower_or_equal",
+                     "recorded_at_time_from", "recorded_at_time_to", "limit"];
 
 const cache = new Map();     // key -> {t, body, status}
 const inflight = new Map();  // key -> Promise<{body,status}>
@@ -79,6 +83,34 @@ export default {
         return reply(JSON.stringify({ error: "osrm HTTP " + r.status }), r.status, "error", 0);
       } catch (e) {
         if (hit) return reply(hit.body, 200, "stale-error", 3600);
+        return reply(JSON.stringify({ error: String(e) }), 502, "error", 0);
+      }
+    }
+
+    // --- Stride bus positions in a map rectangle (traffic probes), shared by all viewers ---
+    if (path === "/stride/siri_vehicle_locations/list") {
+      const inq = new URL(req.url).searchParams, out = new URLSearchParams();
+      for (const k of STRIDE_KEYS) { const v = inq.get(k); if (v != null) out.set(k, v); }
+      const nums = ["lat__greater_or_equal", "lat__lower_or_equal", "lon__greater_or_equal", "lon__lower_or_equal"];
+      if (!nums.every(k => /^-?\d{1,3}(\.\d{1,7})?$/.test(out.get(k) || "")) ||
+          !/^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d)?Z$/.test(out.get("recorded_at_time_from") || "") ||
+          !/^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d)?Z$/.test(out.get("recorded_at_time_to") || ""))
+        return new Response("bad stride query", { status: 400, headers: c });
+      const lim = Math.min(1000, Math.max(1, +out.get("limit") || 500)); out.set("limit", String(lim));
+      // keep the box small: at most ~0.1 x 0.1 degrees
+      if (+out.get("lat__lower_or_equal") - +out.get("lat__greater_or_equal") > 0.1 ||
+          +out.get("lon__lower_or_equal") - +out.get("lon__greater_or_equal") > 0.1)
+        return new Response("box too large", { status: 400, headers: c });
+      const qs = out.toString(), key = "stride:" + qs, hit = cache.get(key);
+      if (hit && now - hit.t < STRIDE_FRESH_MS) return reply(hit.body, 200, "fresh", 60);
+      try {
+        const r = await shared(key, "https://open-bus-stride-api.hasadna.org.il/siri_vehicle_locations/list?" + qs,
+                               { "User-Agent": "bus-tracker-relay (shared cache)" });
+        if (r.status === 200) { remember(key, { t: Date.now(), body: r.body }); return reply(r.body, 200, "miss", 60); }
+        if (hit) return reply(hit.body, 200, "stale-" + r.status, 60);
+        return reply(JSON.stringify({ error: "stride HTTP " + r.status }), r.status, "error", 0);
+      } catch (e) {
+        if (hit) return reply(hit.body, 200, "stale-error", 60);
         return reply(JSON.stringify({ error: String(e) }), 502, "error", 0);
       }
     }
