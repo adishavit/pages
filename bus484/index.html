@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Line 484 live – Tel Aviv → Mevaseret Zion</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  html,body{margin:0;height:100%;font-family:system-ui,-apple-system,sans-serif}
+  #map{position:absolute;inset:0 0 168px 0}
+  #panel{position:absolute;left:0;right:0;bottom:0;height:168px;background:#fff;border-top:1px solid #ccc;
+    padding:8px 12px calc(8px + env(safe-area-inset-bottom));box-sizing:border-box;overflow:auto;font-size:14px}
+  #status{font-size:12px;color:#555;margin-bottom:6px}
+  #status.err{color:#b00020}
+  .bus{padding:4px 0;border-top:1px solid #eee}
+  .bus b{font-size:15px}
+  .stale{color:#b00020}
+  .stoplbl{background:#fff;border:1px solid #888;border-radius:3px;padding:0 3px;font-size:11px;white-space:nowrap;direction:rtl}
+  .stoplbl.k{background:#ffe08a;border-color:#c60;font-weight:700}
+  .busicon{background:#d32f2f;color:#fff;border:2px solid #fff;border-radius:50%;width:26px;height:26px;
+    line-height:22px;text-align:center;font-weight:700;font-size:11px;box-shadow:0 0 4px #000}
+  button{font-size:13px;padding:4px 10px;margin-left:6px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <div id="status">Loading…</div>
+  <div id="buses"></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const API = "https://open-bus-stride-api.hasadna.org.il";
+const LINE_REF = 19094;            // line 484, Tel Aviv Savidor -> Mevaseret Zion (Tnufa), looked up for 2026-11-24
+const REFRESH_MS = 60000;
+const WINDOW_MIN = 15;             // how far back to look for fixes
+const STALE_MIN = 5;               // flag a bus whose last fix is older than this
+
+// Stops from GTFS ride 164125712 (2026-11-24). Used as a fallback; refreshed from the API at load.
+let stops = [
+ [1,"ת. רכבת תל אביב- סבידור/רציפים A",32.083157,34.796089],
+ [2,"מתחם מידטאון/דרך מנחם בגין",32.080071,34.795266],
+ [3,"קניון עזריאלי/דרך מנחם בגין",32.074584,34.790607],
+ [4,"ת.רק''ל יהודית/דרך מנחם בגין",32.070002,34.787954],
+ [5,"ת.רק''ל קרליבך/דרך מנחם בגין A",32.065556,34.783121],
+ [6,"ת. רכבת ההגנה/החרש",32.055692,34.783286],
+ [7,"דרך קיבוץ גלויות/כביש 1",32.046861,34.784605],
+ [8,"מחלף שורש",31.800293,35.077409],
+ [9,"מחלף חמד",31.800330,35.126238],
+ [10,"הראל/יסמין",31.799962,35.148045],
+ [11,"תחנת משטרה/הראל",31.802479,35.149484],
+ [12,"מרכז ספורט",31.804484,35.151863]];
+
+const map = L.map("map").setView([32.0, 35.0], 9);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {maxZoom:19, attribution:"© OpenStreetMap"}).addTo(map);
+
+const stopLayer = L.layerGroup().addTo(map);
+const busLayer = L.layerGroup().addTo(map);
+let routeLine = null, fitted = false;
+
+function drawStops(){
+  stopLayer.clearLayers();
+  if (routeLine) map.removeLayer(routeLine);
+  // Straight lines between stops (not the real road shape; the gap between stops 7 and 8 is the highway).
+  routeLine = L.polyline(stops.map(s=>[s[2],s[3]]),{color:"#1565c0",weight:3,dashArray:"6 6"}).addTo(map);
+  for (const s of stops){
+    const k = s[1].includes("קרליבך");
+    const m = L.circleMarker([s[2],s[3]],{radius:k?8:5,color:k?"#c60":"#1565c0",fillColor:k?"#ffe08a":"#fff",fillOpacity:1,weight:2})
+      .bindTooltip(s[1],{permanent:k||stops.length<=12,direction:"right",className:"stoplbl"+(k?" k":"")})
+      .addTo(stopLayer);
+  }
+  if(!fitted){ map.fitBounds(routeLine.getBounds().pad(0.1)); fitted = true; }
+}
+
+async function loadStops(){
+  try{
+    // newest ride of this line's route today -> its stops
+    const today = new Date().toLocaleDateString("sv",{timeZone:"Asia/Jerusalem"});
+    const rt = await (await fetch(`${API}/gtfs_routes/list?route_short_name=484&date_from=${today}&date_to=${today}&limit=10`)).json();
+    const route = rt.find(r=>r.line_ref===LINE_REF);
+    if(!route) return;
+    const rides = await (await fetch(`${API}/gtfs_rides/list?gtfs_route_id=${route.id}&limit=1&order_by=start_time%20desc`)).json();
+    if(!rides.length) return;
+    const rs = await (await fetch(`${API}/gtfs_ride_stops/list?gtfs_ride_ids=${rides[0].id}&limit=200&order_by=stop_sequence%20asc`)).json();
+    if(rs.length>3) stops = rs.map(r=>[r.stop_sequence,r.gtfs_stop__name,r.gtfs_stop__lat,r.gtfs_stop__lon]);
+  }catch(e){ /* keep built-in stops */ }
+}
+
+function dist(a,b,c,d){const R=6371e3,t=Math.PI/180,dl=(c-a)*t,dn=(d-b)*t;
+  const h=Math.sin(dl/2)**2+Math.cos(a*t)*Math.cos(c*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
+
+async function refresh(){
+  const st = document.getElementById("status");
+  try{
+    const from = new Date(Date.now()-WINDOW_MIN*60000).toISOString();
+    const url = `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${LINE_REF}`+
+      `&recorded_at_time_from=${encodeURIComponent(from)}&order_by=${encodeURIComponent("recorded_at_time desc")}&limit=200`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const rows = await res.json();
+    // keep newest fix per vehicle (field name for vehicle assumed: siri_ride__vehicle_ref; falls back to ride id)
+    const latest = new Map();
+    for(const r of rows){
+      const key = r.siri_ride__vehicle_ref ?? r.siri_ride_id ?? "?";
+      if(!latest.has(key)) latest.set(key,r);
+    }
+    busLayer.clearLayers();
+    const list = document.getElementById("buses"); list.innerHTML = "";
+    const now = Date.now();
+    let i = 0;
+    for(const [key,r] of latest){
+      i++;
+      const ageMin = (now - new Date(r.recorded_at_time).getTime())/60000;
+      let near = stops[0], nd = Infinity;
+      for(const s of stops){const d=dist(r.lat,r.lon,s[2],s[3]); if(d<nd){nd=d;near=s;}}
+      L.marker([r.lat,r.lon],{icon:L.divIcon({className:"",html:`<div class="busicon">${i}</div>`,iconSize:[26,26]}),opacity:ageMin>STALE_MIN?0.5:1})
+        .bindTooltip(`Bus ${i}`).addTo(busLayer);
+      const div = document.createElement("div"); div.className="bus";
+      div.innerHTML = `<b>Bus ${i}</b> (ref ${key}) · speed ${r.velocity ?? "?"} · `+
+        `<span class="${ageMin>STALE_MIN?"stale":""}">${ageMin.toFixed(1)} min ago</span><br>`+
+        `Nearest stop: <span dir="rtl">${near[1]}</span> (${Math.round(nd)} m)`;
+      list.appendChild(div);
+    }
+    const t = new Date().toLocaleTimeString("he-IL",{timeZone:"Asia/Jerusalem"});
+    st.className = "";
+    st.innerHTML = latest.size
+      ? `${latest.size} bus(es) with a fix in the last ${WINDOW_MIN} min · updated ${t} · refreshes every 60s <button onclick="refresh()">Refresh now</button>`
+      : `No fixes for line 484 (→Mevaseret) in the last ${WINDOW_MIN} min · checked ${t} <button onclick="refresh()">Refresh now</button>`;
+  }catch(e){
+    st.className = "err";
+    st.innerHTML = `Could not load live data: ${e.message}. Will retry in 60s. <button onclick="refresh()">Retry</button>`;
+  }
+}
+
+drawStops();
+loadStops().then(()=>{drawStops(); refresh();});
+setInterval(refresh, REFRESH_MS);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) refresh(); });
+</script>
+</body>
+</html>
