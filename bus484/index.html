@@ -172,8 +172,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v33";
-const BUILD="2026-11-24T20:06:45Z";
+const VERSION="v34";
+const BUILD="2026-11-24T20:07:59Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -239,7 +239,7 @@ const BUILTIN_19094={from:"תל אביב יפו",to:"מבשרת ציון",stops:
  [9,"מחלף חמד",31.800330,35.126238,640,2721],[10,"הראל/יסמין",31.799962,35.148045,5664,2939],
  [11,"תחנת משטרה/הראל",31.802479,35.149484,5827,2999],[12,"מרכז ספורט",31.804484,35.151863,2454,3053]]};
 function useBuiltin(){
-  stops=BUILTIN_19094.stops.map(([seq,name,lat,lon,code,off])=>({seq,name,lat,lon,code:String(code),off}));
+  stops=BUILTIN_19094.stops.map(([seq,name,lat,lon,code,off])=>({seq,name,lat,lon,code:String(code),off,city:seq<=7?"תל אביב יפו":"מבשרת ציון"}));
   title={num:"484",from:BUILTIN_19094.from,to:BUILTIN_19094.to};
 }
 const todayIL=()=>new Date().toLocaleDateString("sv",{timeZone:TZ});
@@ -487,7 +487,7 @@ function routeBearing(a){const p=pointAt(a),q=pointAt(Math.min(routeLen(),a+40))
 const angDiff=(a,b)=>{const d=Math.abs(a-b)%360;return d>180?360-d:d;};
 function buildSections(){   // map boxes used only to FETCH positions
   const L=routeLen(), sig=routePts.length+":"+Math.round(L);
-  if(sig===sectionSig) return; sectionSig=sig; sections=[]; prof=null;
+  if(sig===sectionSig) return; sectionSig=sig; sections=[]; prof=null; computeZones();
   for(const[,m]of vehicles) for(const[,f]of m) delete f._sn;
   if(L<500||routePts.length<2) return;
   let a=0;
@@ -510,7 +510,24 @@ function planPace(a){ // timetable RUNNING pace (s/m) around a: the gap's planne
   return Math.max(0.5*dt,dt-dw)/da;
 }
 const intermediateStops=()=>stops.slice(1,-1);
-function atStopPoint(p){ return (Number.isFinite(p.ds)&&p.ds<=30)||intermediateStops().some(s=>Math.abs(p.a-s.along)<=40)||(stops.length&&Math.abs(p.a-stops[0].along)<=40); }
+// Bus stops of ALL lines that lie on our route (from the route's cities); a bus standing at one is dwelling, not in traffic.
+let zoneStops=[], zoneAlong=[];
+async function loadStopZones(){
+  const cities=[...new Set(stops.map(s=>s.city).filter(Boolean))]; if(!cities.length) return;
+  const d=todayIL(), all=[];
+  for(const c of cities){ try{ all.push(...await getJSON("stops-"+c,`${API}/gtfs_stops/list?date_from=${d}&date_to=${d}&city=${encodeURIComponent(c)}&limit=5000`,30000)); }catch(e){ log("stop zones: "+e.message); } }
+  zoneStops=all.filter(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lon)).map(s=>({lat:s.lat,lon:s.lon}));
+  computeZones(); log(`stop zones: ${zoneAlong.length} stops on the route (from ${all.length} in ${cities.length} cities)`);
+  if(probeAt&&probeState!=="disabled"){ buildProfile(); render(); }
+}
+function computeZones(){
+  const z=[]; for(const s of zoneStops){ const sn=snap(s.lat,s.lon); if(sn.d<=40) z.push(sn.along); }
+  for(const s of stops) z.push(s.along);
+  zoneAlong=[...new Set(z.map(a=>Math.round(a)))].sort((a,b)=>a-b);
+}
+function nearZone(a){ let lo=0,hi=zoneAlong.length-1; while(lo<=hi){const m=(lo+hi)>>1; if(zoneAlong[m]<a) lo=m+1; else hi=m-1;}
+  return (lo<zoneAlong.length&&zoneAlong[lo]-a<=40)||(lo>0&&a-zoneAlong[lo-1]<=40); }
+function atStopPoint(p){ return (Number.isFinite(p.ds)&&p.ds<=30)||(zoneAlong.length?nearZone(p.a):stops.some(s=>Math.abs(p.a-s.along)<=40)); }
 // probe pairs from raw positions: same filters as before (on our road, our direction, no terminals, plausible)
 function probePairs(rows){
   const byV=new Map(), seen=new Set(), L=routeLen();
@@ -655,7 +672,7 @@ async function fetchProbes(){
   const t0=performance.now(); buildProfile(); const ms=Math.round(performance.now()-t0);
   const cov=prof?Math.round(prof.conf.filter(c=>c>=ASM.minConf).length*prof.C/100)/10:0;
   probeState=haveTraffic()?"ok":"no data";
-  probeInfo=`${prof?prof.obs:0} running measurements from ${prof?prof.veh:0} buses (${prof?prof.dwellPairs:0} at-stop excluded) · ${cov} km of ${(routeLen()/1000).toFixed(1)} covered · ${all.length} positions · ${fails} failed${probeDirect?" · direct (old relay)":""} · model ${ms} ms`;
+  probeInfo=`${prof?prof.obs:0} running measurements from ${prof?prof.veh:0} buses (${prof?prof.dwellPairs:0} at-stop excluded, ${zoneAlong.length} stops on route) · ${cov} km of ${(routeLen()/1000).toFixed(1)} covered · ${all.length} positions · ${fails} failed${probeDirect?" · direct (old relay)":""} · model ${ms} ms`;
   log("probes: "+probeInfo); render();
 }
 
@@ -1172,7 +1189,7 @@ $("btnMe").addEventListener("click",()=>{
 setSheet(0);
 (async()=>{
   if(REF===19094){useBuiltin();drawStops();renderTitle();refresh();}   // known line: start polling at once
-  await loadLine(); setUrl(); drawStops(); render(); await loadRoad(); fetchProbes();
+  await loadLine(); setUrl(); drawStops(); render(); await loadRoad(); loadStopZones(); fetchProbes();
   if(!okCount&&!inFlight) refresh();
   if(!rides.length&&!stops.length){$("heroTxt").textContent=`Line ${LINE} not found today. Use ⚙︎ to pick a line.`;}
   checkVersion();
