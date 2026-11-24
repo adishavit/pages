@@ -9,7 +9,7 @@
 <style>
 :root{--bg:#fff;--fg:#1b1b1f;--mut:#6b6f76;--line:#e6e7ea;--card:#f6f7f9;--acc:#1565c0;--live:#2e7d32;--str:#d32f2f;--old:#9aa0a6;--warn:#b26a00;--late:#c62828;--ok:#2e7d32;--sheet-shadow:0 -6px 24px rgba(0,0,0,.18)}
 @media (prefers-color-scheme:dark){:root{--bg:#17181b;--fg:#ececf0;--mut:#9aa0a6;--line:#2b2d31;--card:#202226;--acc:#64a0ff;--sheet-shadow:0 -6px 24px rgba(0,0,0,.6)}
-  .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9)} .leaflet-container{background:#111}}
+  .invert-dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9)} .leaflet-container{background:#111}}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg);-webkit-tap-highlight-color:transparent}
 #map{position:absolute;inset:0}
@@ -119,6 +119,11 @@ tr.past td{color:var(--mut)}
     <div class="pane" id="p-line"><div id="traffic"></div><div class="mut" style="font-size:12px">Tap a station to make it your stop. Line colour = traffic from other buses.</div><div id="diagram"></div></div>
     <div class="pane" id="p-deps"><div id="deps"></div></div>
     <div class="pane set" id="p-set">
+      <h3>Map style</h3>
+      <select id="mapStyle" style="font:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);max-width:100%"></select>
+      <div class="mut" style="font-size:12px;margin-top:6px">CARTO styles need a free key (no account): <a href="https://carto.com/basemaps/apikey" target="_blank">carto.com/basemaps/apikey</a>.
+        <form id="cartoForm" style="margin-top:6px"><input id="cartoIn" placeholder="CARTO key" style="width:200px"> <button class="btn">Save</button></form>
+        Stadia styles work once the site's domain is registered at <a href="https://stadiamaps.com/" target="_blank">stadiamaps.com</a> (free).</div>
       <h3>Line</h3>
       <form id="lineForm"><input id="lineIn" inputmode="numeric" placeholder="e.g. 480"> <button class="btn">Find</button></form>
       <div id="lineOpts"></div>
@@ -140,8 +145,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v19";
-const BUILD="2026-11-24T19:20:21Z";
+const VERSION="v20";
+const BUILD="2026-11-24T19:28:43Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -173,7 +178,7 @@ if(qs.get("relay")) store("relay484",LIVE_BASE);
 const REFRESH_MS=60000, IDLE_REFRESH_MS=180000, TIMEOUT_MS=30000, LIMIT=500, FIRST_WINDOW_MIN=30, KEEP_MIN=30, STALE_MIN=5;
 log(`start ${VERSION} build=${BUILD} line=${LINE} ref=${REF} stop=${MY_STOP} relay=${LIVE_BASE}`);
 log(`UA: ${navigator.userAgent} | origin=${location.origin} | secure=${window.isSecureContext}`);
-function setUrl(){const p=new URLSearchParams(location.search);p.set("line",LINE);if(REF)p.set("ref",REF);if(MY_STOP)p.set("stop",MY_STOP);else p.delete("stop");p.delete("relay");p.delete("v");
+function setUrl(){const p=new URLSearchParams(location.search);if(typeof MAP_STYLE!=="undefined"&&MAP_STYLE!=="osm")p.set("map",MAP_STYLE);else p.delete("map");p.delete("cartokey");p.set("line",LINE);if(REF)p.set("ref",REF);if(MY_STOP)p.set("stop",MY_STOP);else p.delete("stop");p.delete("relay");p.delete("v");
   try{history.replaceState(null,"",location.pathname+"?"+p.toString());}catch(_){}}
 
 // ---------- network ----------
@@ -245,6 +250,37 @@ function prettyRoute(r){const p=String(r.route_long_name||"").split("<->");const
   return {from:clean(p[0]||""),to:clean(p[1]||"")};}
 function switchTo(ref,line){ const p=new URLSearchParams();p.set("line",line||LINE);p.set("ref",ref);location.search=p.toString(); }
 
+// ---------- map styles ----------
+// CARTO needs a free key (carto.com/basemaps/apikey); Stadia needs the site's domain registered (stadiamaps.com, free tier).
+const CARTO_KEY_DEFAULT="";   // paste a CARTO basemaps key here to enable the CARTO styles for everyone
+let CARTO_KEY=qs.get("cartokey")||load("cartokey")||CARTO_KEY_DEFAULT; if(qs.get("cartokey")) store("cartokey",CARTO_KEY);
+const OSM_ATTR='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const STYLES={
+  osm:      {name:"Standard (OpenStreetMap)", url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png", attr:OSM_ATTR, max:19, invert:true},
+  voyager:  {name:"Google-like (CARTO Voyager)", carto:"rastertiles/voyager", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
+  positron: {name:"Clean light (CARTO Positron)", carto:"light_all", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
+  dark:     {name:"Clean dark (CARTO Dark Matter)", carto:"dark_all", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
+  smooth:   {name:"Smooth (Stadia Alidade)", url:"https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png", attr:'© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> '+OSM_ATTR, max:20, stadia:true},
+  smoothdark:{name:"Smooth dark (Stadia Alidade)", url:"https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png", attr:'© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> '+OSM_ATTR, max:20, stadia:true},
+};
+const prefersDark=()=>window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches;
+let MAP_STYLE=qs.get("map")||load("mapstyle")||(CARTO_KEY?(prefersDark()?"dark":"voyager"):"osm");
+if(!STYLES[MAP_STYLE]) MAP_STYLE="osm";
+let baseLayer=null;
+function styleUrl(st){ return st.carto?`https://basemaps.cartocdn.com/${st.carto}/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_KEY)}`:st.url; }
+function setMapStyle(id,initial){
+  let st=STYLES[id]||STYLES.osm;
+  if(st.carto&&!CARTO_KEY){ if(!initial) toast("This style needs a free CARTO key (see ⚙︎)"); id="osm"; st=STYLES.osm; }
+  MAP_STYLE=id; store("mapstyle",id);
+  if(!map) return;
+  if(baseLayer) baseLayer.remove();
+  baseLayer=L.tileLayer(styleUrl(st),{maxZoom:st.max,attribution:st.attr}).addTo(map);
+  let errs=0; baseLayer.on("tileerror",()=>{ if(++errs===4){ log(`map style ${id}: tiles failing${st.stadia?" (register the site domain at stadiamaps.com)":st.carto?" (check the CARTO key)":""}`); if(id!=="osm"){toast("Map style failed — back to Standard");setMapStyle("osm");} } });
+  map.getContainer().classList.toggle("invert-dark",!!st.invert);
+  const sel=$("mapStyle"); if(sel) sel.value=id;
+  if(!initial) setUrl();
+}
+
 // ---------- map ----------
 const HAVE_MAP=typeof L!=="undefined";
 let map=null, stopLayer, hotLayer, trailLayer, estLayer, meLayer, routeLine=null, fitted=false;
@@ -263,8 +299,8 @@ function tickEst(jump){
 setInterval(()=>tickEst(false),1000);
 if(HAVE_MAP){
   map=L.map("map",{zoomControl:false,attributionControl:false}).setView([32.0,34.9],9);
-  L.control.attribution({position:"topright",prefix:false}).addAttribution("© OpenStreetMap").addTo(map);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map);
+  L.control.attribution({position:"topright",prefix:false}).addTo(map);
+  setMapStyle(MAP_STYLE,true);
   stopLayer=L.layerGroup().addTo(map); hotLayer=L.layerGroup().addTo(map); trailLayer=L.layerGroup().addTo(map); estLayer=L.layerGroup().addTo(map); meLayer=L.layerGroup().addTo(map);
   const zc=()=>map.getContainer().classList.toggle("far",map.getZoom()<12); map.on("zoomend",zc); zc();
 }else{ $("map").innerHTML='<p style="padding:5em 1em">Map library failed to load. Lists still update.</p>'; log("Leaflet missing"); }
@@ -399,62 +435,143 @@ function merge(rows){
   return added;
 }
 
-// ---------- traffic from bus probes (every bus line on our road is a speed sensor) ----------
+// ---------- traffic from bus probes: continuous speed profile along the route ----------
+// Method (best practice from the literature):
+//  - each probe = two consecutive reports of one bus (any line) on our road, same direction;
+//  - its travel time is split over the 100 m cells it crossed in proportion to the timetable's planned time there
+//    (better than an even split: stops and junctions get their share);
+//  - cells are filled with the adaptive smoothing method (Treiber & Helbing 2002): two space-time kernels, one moving
+//    downstream (free flow, +60 km/h) and one upstream (congestion, -15 km/h), blended by how congested it looks;
+//  - everything is aggregated as time per distance (pace), and blended with the timetable where data is sparse.
 let sections=[], sectionSig="", probeState="off", probeInfo="", probeAt=0, probeBusy=false, probeDirect=false;
-const SEC_CITY=1500, SEC_HWY=4000, PROBE_MS=300000;   // every 5 min: traffic changes slowly, Stride is minutes behind anyway
+let probeRows=[];      // raw positions from the last probe run (all lines, our road boxes)
+let prof=null;         // {C, n, pace[], conf[], plan[], tRef, obs, veh}
+const SEC_CITY=1500, SEC_HWY=4000, PROBE_MS=300000;   // fetch boxes; every 5 min
+// tuned on synthetic jams with realistic bus density; smoothing width adapts: ~25 s of planned travel (150 m city .. 600 m highway)
+const ASM={C:100, sigmaSec:25, sigmaMin:150, sigmaMax:600, tau:300, cFree:60/3.6, cCong:-15/3.6, prior:75, minConf:0.35, iter:2};
 function routeBearing(a){const p=pointAt(a),q=pointAt(Math.min(routeLen(),a+40));const y=Math.sin((q[1]-p[1])*Math.PI/180)*Math.cos(q[0]*Math.PI/180),x=Math.cos(p[0]*Math.PI/180)*Math.sin(q[0]*Math.PI/180)-Math.sin(p[0]*Math.PI/180)*Math.cos(q[0]*Math.PI/180)*Math.cos((q[1]-p[1])*Math.PI/180);return(Math.atan2(y,x)*180/Math.PI+360)%360;}
 const angDiff=(a,b)=>{const d=Math.abs(a-b)%360;return d>180?360-d:d;};
-function buildSections(){
+function buildSections(){   // map boxes used only to FETCH positions
   const L=routeLen(), sig=routePts.length+":"+Math.round(L);
-  if(sig===sectionSig) return; sectionSig=sig; sections=[];
-  for(const[,m]of vehicles) for(const[,f]of m) delete f._sn;      // route changed: re-snap positions later
+  if(sig===sectionSig) return; sectionSig=sig; sections=[]; prof=null;
+  for(const[,m]of vehicles) for(const[,f]of m) delete f._sn;
   if(L<500||routePts.length<2) return;
   let a=0;
   while(a<L-50){
     const o0=offAtAlong(a), o1=offAtAlong(Math.min(L,a+500));
     const planHere=(o0!=null&&o1!=null&&o1>o0)?(Math.min(L,a+500)-a)/(o1-o0):null;
-    const len=(planHere!=null&&planHere<35/3.6)?SEC_CITY:SEC_HWY;          // short sections in the city, long on the highway
+    const len=(planHere!=null&&planHere<35/3.6)?SEC_CITY:SEC_HWY;
     let b=Math.min(L,a+len); if(L-b<len*0.4) b=L;
     const pts=slice(a,b); let la0=90,la1=-90,lo0=180,lo1=-180;
     for(const[y,x]of pts){la0=Math.min(la0,y);la1=Math.max(la1,y);lo0=Math.min(lo0,x);lo1=Math.max(lo1,x);}
-    const pad=0.0012, p0=offAtAlong(a), p1=offAtAlong(b);
-    sections.push({i:sections.length,a,b,pts,box:[la0-pad,la1+pad,lo0-pad,lo1+pad],plan:(p0!=null&&p1!=null&&p1>p0)?(b-a)/(p1-p0):null,speed:null,n:0,veh:0,newest:null});
-    a=b;
+    const pad=0.0012; sections.push({i:sections.length,a,b,box:[la0-pad,la1+pad,lo0-pad,lo1+pad]}); a=b;
   }
-  log(`traffic: ${sections.length} sections`);
+  log(`traffic: ${sections.length} fetch boxes`);
 }
-function sectionName(s){const mid=(s.a+s.b)/2,p=pointAt(mid);let n=null,nd=Infinity;for(const x of stops){const d=dist(p[0],p[1],x.lat,x.lon);if(d<nd){nd=d;n=x;}}
-  return nd<1500&&n?`near ${n.name}`:`route km ${Math.round(s.a/1000)}–${Math.round(s.b/1000)}`;}
-function sectionLevel(s){ // 0 green, 1 orange, 2 red, null no data
-  if(s.speed==null) return null;
-  const r=s.plan?s.speed/s.plan:(s.speed>8?1:s.speed>4?.7:.4);
-  return r>=0.85?0:r>=0.55?1:2;
+function planPace(a){ // timetable seconds per metre around a (includes planned stop time)
+  const L=routeLen(), x0=Math.max(0,a-150), x1=Math.min(L,a+150), o0=offAtAlong(x0), o1=offAtAlong(x1);
+  return (o0!=null&&o1!=null&&o1>o0&&x1>x0)?(o1-o0)/(x1-x0):1/10;
 }
-const LEVEL_COLOR=["#2e7d32","#f29900","#c62828"];
-function computeSection(s,rows){
-  const byV=new Map(), L=routeLen();
+// probe pairs from raw positions: same filters as before (on our road, our direction, no terminals, plausible)
+function probePairs(rows){
+  const byV=new Map(), seen=new Set(), L=routeLen();
   for(const r of rows){const t=tms(r);if(!Number.isFinite(r.lat)||!Number.isFinite(r.lon)||!Number.isFinite(t))continue;
-    const v=String(r.siri_ride__vehicle_ref??r.siri_ride__id??"");if(!v)continue;if(!byV.has(v))byV.set(v,[]);byV.get(v).push({t,lat:r.lat,lon:r.lon,brg:r.bearing});}
-  let dsum=0,tsum=0,pairs=0,vehs=0,newest=0;
+    const v=String(r.siri_ride__vehicle_ref??r.siri_ride__id??"");if(!v)continue;const key=v+"|"+t;if(seen.has(key))continue;seen.add(key);
+    if(!byV.has(v))byV.set(v,[]);byV.get(v).push({t,lat:r.lat,lon:r.lon,brg:r.bearing});}
+  const out=[]; let veh=0;
   for(const[,arr]of byV){
     arr.sort((x,y)=>x.t-y.t); let used=false;
     for(const p of arr){const sn=snap(p.lat,p.lon);p.a=sn.along;p.d=sn.d;}
     for(let k=1;k<arr.length;k++){
       const p=arr[k-1],q=arr[k],dt=(q.t-p.t)/1000;
-      if(dt<20||dt>300) continue;                       // need two reports 20 s - 5 min apart
-      if(p.d>50||q.d>50) continue;                      // both on our road
-      if(p.a<s.a-100||q.a>s.b+100) continue;            // inside this section
-      if(p.a<150||q.a>L-150) continue;                  // ignore terminals (buses waiting there)
-      const da=q.a-p.a;
-      if(da<-30||da>dt*35) continue;                    // other direction, or impossible speed
-      const moved=dist(p.lat,p.lon,q.lat,q.lon);
-      if(moved<30&&Number.isFinite(q.brg)&&q.brg>0&&angDiff(q.brg,routeBearing(q.a))>60) continue;   // standing, but facing the other way
-      dsum+=Math.max(0,da); tsum+=dt; pairs++; used=true; newest=Math.max(newest,q.t);
+      if(dt<20||dt>300||p.d>50||q.d>50) continue;
+      if(p.a<150||q.a>L-150) continue;                    // terminals: buses wait there
+      const da=q.a-p.a; if(da<-30||da>dt*35) continue;    // other direction / impossible
+      if(dist(p.lat,p.lon,q.lat,q.lon)<30&&Number.isFinite(q.brg)&&q.brg>0&&angDiff(q.brg,routeBearing(q.a))>60) continue;
+      out.push({a0:p.a,a1:Math.max(p.a,q.a),t0:p.t,t1:q.t}); used=true;
     }
-    if(used) vehs++;
+    if(used) veh++;
   }
-  s.n=pairs; s.veh=vehs; s.newest=newest||null;
-  s.speed=((pairs>=4)||(pairs>=2&&vehs>=2))&&tsum>0?dsum/tsum:null;    // time-weighted: total distance / total time
+  return {pairs:out,veh};
+}
+function buildProfile(){
+  const L=routeLen(); if(L<500||!stops.length){prof=null;return;}
+  let prior=null;
+  for(let it=0;it<ASM.iter;it++) prior=profilePass(prior);
+  prof=prior;
+}
+function profilePass(prev){
+  const L=routeLen();
+  const C=ASM.C, n=Math.ceil(L/C), plan=new Float64Array(n);
+  for(let k=0;k<n;k++) plan[k]=planPace((k+.5)*C);
+  const split=prev?prev.pace:plan;        // how to split a pair's time over its cells
+  // our own buses' fixes (incl. live, ~1 min old) are probes too
+  const own=[]; for(const[ref,m]of vehicles) for(const[,f]of m) own.push({...f,siri_ride__vehicle_ref:"own:"+ref});
+  const {pairs,veh}=probePairs(probeRows.concat(own));
+  // 1) split each pair's time over cells, proportional to planned time
+  const obs=[]; let tRef=0;
+  for(const o of pairs){
+    const dt=(o.t1-o.t0)/1000; tRef=Math.max(tRef,o.t1);
+    if(o.a1-o.a0<1){ const k=Math.min(n-1,Math.floor(o.a0/C)); obs.push({x:(k+.5)*C,t:(o.t0+o.t1)/2,dist:0,time:dt}); continue; }   // standing still
+    const k0=Math.floor(o.a0/C), k1=Math.min(n-1,Math.floor(o.a1/C)), parts=[]; let planned=0;
+    for(let k=k0;k<=k1;k++){const ov=Math.min(o.a1,(k+1)*C)-Math.max(o.a0,k*C); if(ov>0){const pt=ov*split[k];planned+=pt;parts.push([k,ov,pt]);}}
+    let cum=0;
+    for(const[k,ov,pt]of parts){const sh=planned>0?pt/planned:ov/(o.a1-o.a0); obs.push({x:(k+.5)*C,t:o.t0+(cum+sh/2)*(o.t1-o.t0),dist:ov,time:dt*sh}); cum+=sh;}
+  }
+  obs.sort((a,b)=>a.x-b.x);
+  // 2) adaptive smoothing at the time of the newest data (no extrapolation: jams at bottlenecks stay put)
+  const pace=new Float64Array(n), conf=new Float64Array(n);
+  let lo=0;
+  for(let k=0;k<n;k++){
+    const x=(k+.5)*C, sigma=Math.min(ASM.sigmaMax,Math.max(ASM.sigmaMin,ASM.sigmaSec/plan[k])), reach=4*sigma; let Tf=0,Df=0,Tc=0,Dc=0;
+    while(lo<obs.length&&obs[lo].x<x-reach) lo++;
+    for(let i=lo;i<obs.length&&obs[i].x<=x+reach;i++){const ob=obs[i],dx=ob.x-x,dt=(ob.t-tRef)/1000;
+      const sx=Math.abs(dx)/sigma;
+      const wf=Math.exp(-sx-Math.abs(dt-dx/ASM.cFree)/ASM.tau), wc=Math.exp(-sx-Math.abs(dt-dx/ASM.cCong)/ASM.tau);
+      Tf+=wf*ob.time;Df+=wf*ob.dist;Tc+=wc*ob.time;Dc+=wc*ob.dist;}
+    const P=ASM.prior, pf=(Tf+P*plan[k])/(Df+P), pc=(Tc+P*plan[k])/(Dc+P);   // timetable as a weak prior
+    const vStar=Math.min(1/pf,1/pc), vPlan=1/plan[k];
+    const w=0.5*(1+Math.tanh((0.6*vPlan-vStar)/(0.2*vPlan)));             // congested where speed < ~60% of planned
+    pace[k]=Math.min(2,Math.max(1/35,w*pc+(1-w)*pf));
+    conf[k]=Math.max(Df,Dc)/(Math.max(Df,Dc)+P);
+  }
+  return {C,n,pace,conf,plan,tRef,obs:pairs.length,veh};
+}
+const haveTraffic=()=>!!prof&&prof.conf.some(c=>c>=ASM.minConf);
+function cellLevel(k){ // 0 green, 1 orange, 2 red, null = not enough data
+  if(!prof||prof.conf[k]<ASM.minConf) return null;
+  const r=prof.plan[k]/prof.pace[k];   // speed / planned speed
+  return r>=0.85?0:r>=0.55?1:2;
+}
+const LEVEL_COLOR=["#2e7d32","#f29900","#c62828"];
+function travelTime(a0,a1){ // seconds, integrating the profile (timetable where no profile)
+  if(a1<=a0) return {t:0,probe:false};
+  if(!prof){ let t=0; for(let a=a0;a<a1;a+=100) t+=Math.min(100,a1-a)*planPace(a); return {t,probe:false}; }
+  const C=prof.C; let t=0,probe=false;
+  for(let k=Math.floor(a0/C);k<prof.n&&k*C<a1;k++){const ov=Math.min(a1,(k+1)*C)-Math.max(a0,k*C); if(ov<=0) continue; t+=ov*prof.pace[k]; if(prof.conf[k]>=ASM.minConf) probe=true;}
+  return {t,probe};
+}
+function advance(a0,sec){
+  if(!prof) return a0;
+  const C=prof.C; let a=a0,rem=sec;
+  for(let k=Math.floor(a0/C);k<prof.n;k++){const end=Math.min((k+1)*C,routeLen()), need=(end-a)*prof.pace[k];
+    if(need>=rem) return a+rem/prof.pace[k]; rem-=need; a=end;}
+  return routeLen();
+}
+function trafficRuns(){ // contiguous stretches with the same level
+  const runs=[]; if(!prof) return runs; let cur=null;
+  for(let k=0;k<prof.n;k++){const lv=cellLevel(k);
+    if(cur&&cur.lv===lv) cur.k1=k; else { if(cur&&cur.lv!=null) runs.push(cur); cur={lv,k0:k,k1:k}; } }
+  if(cur&&cur.lv!=null) runs.push(cur);
+  for(const r of runs){ r.a0=r.k0*prof.C; r.a1=Math.min(routeLen(),(r.k1+1)*prof.C); let d=0,t=0,pd=0;
+    for(let k=r.k0;k<=r.k1;k++){d+=prof.C;t+=prof.C*prof.pace[k];pd+=prof.C*prof.plan[k];} r.speed=d/t; r.plan=d/pd; }
+  return runs;
+}
+function runName(r){ // relative to the nearest stop at the jam's head (downstream end)
+  let n=null,nd=Infinity; for(const s of stops){const d=Math.abs(s.along-r.a1); if(d<nd){nd=d;n=s;}}
+  if(!n||nd>2000) return `route km ${(r.a0/1000).toFixed(1)}–${(r.a1/1000).toFixed(1)}`;
+  const len=Math.round((r.a1-r.a0)/100)*100;
+  return n.along>=r.a1-50?`${len} m before ${n.name}`:`${len} m, ending ${Math.round((r.a1-n.along)/100)*100} m after ${n.name}`;
 }
 async function fetchProbes(){
   if(probeBusy||!sections.length||probeState==="disabled") return;
@@ -462,42 +579,30 @@ async function fetchProbes(){
   const B=Math.floor(Date.now()/PROBE_MS)*PROBE_MS;     // same window for every viewer -> shared relay cache
   const iso=ms=>new Date(ms).toISOString().slice(0,16)+":00Z";
   const from=iso(B-15*60000), to=iso(B+PROBE_MS);
-  let rowsTot=0, outside=0, ok=0, fails=0;
+  let all=[], outside=0, fails=0;
   const qOf=s=>`lat__greater_or_equal=${s.box[0].toFixed(5)}&lat__lower_or_equal=${s.box[1].toFixed(5)}&lon__greater_or_equal=${s.box[2].toFixed(5)}&lon__lower_or_equal=${s.box[3].toFixed(5)}&recorded_at_time_from=${from}&recorded_at_time_to=${to}&limit=1000`;
   const one=async s=>{
     let rows; const viaRelay=!probeDirect;
     try{rows=await getJSON(`probe-${s.i}`,viaRelay?`${LIVE_BASE}/stride/siri_vehicle_locations/list?${qOf(s)}`:`${API}/siri_vehicle_locations/list?${qOf(s)}`,30000,false);
-      if(rows&&rows.compact) rows=rows.rows.map(([v,t,lat,lon,b])=>({siri_ride__vehicle_ref:v,recorded_at_time:new Date(t*1000).toISOString(),lat,lon,bearing:b}));   // compact form from relay v5
+      if(rows&&rows.compact) rows=rows.rows.map(([v,t,lat,lon,b])=>({siri_ride__vehicle_ref:v,recorded_at_time:new Date(t*1000).toISOString(),lat,lon,bearing:b}));
       if(!Array.isArray(rows)) throw new Error(`probe-${s.i}: unexpected reply`);}
     catch(e){ if(viaRelay&&/HTTP 40[04]/.test(e.message)){ if(!probeDirect){probeDirect=true;log("relay has no probe endpoint (update the relay) -> asking Stride directly");} return one(s);} fails++; return; }
-    rowsTot+=rows.length;
     for(const r of rows) if(r.lat<s.box[0]-0.002||r.lat>s.box[1]+0.002||r.lon<s.box[2]-0.002||r.lon>s.box[3]+0.002) outside++;
-    computeSection(s,rows); if(s.speed!=null) ok++;
+    all=all.concat(rows);
   };
   const q=[...sections];
   await Promise.all([0,1,2].map(async()=>{while(q.length) await one(q.shift());}));
   probeBusy=false;
-  if(rowsTot>50&&outside/rowsTot>0.2){
-    probeState="disabled"; for(const s of sections) s.speed=null;
-    probeInfo=`Stride ignored the map-box filter (${outside}/${rowsTot} positions outside) — traffic features off`; log(probeInfo); render(); return;
+  if(all.length>50&&outside/all.length>0.2){
+    probeState="disabled"; probeRows=[]; prof=null;
+    probeInfo=`Stride ignored the map-box filter (${outside}/${all.length} positions outside) — traffic features off`; log(probeInfo); render(); return;
   }
-  probeState=ok?"ok":"no data";
-  probeInfo=`${ok}/${sections.length} sections with data · ${rowsTot} bus positions · ${fails} failed${probeDirect?" · direct (old relay)":""}`;
+  probeRows=all;
+  const t0=performance.now(); buildProfile(); const ms=Math.round(performance.now()-t0);
+  const cov=prof?Math.round(prof.conf.filter(c=>c>=ASM.minConf).length*prof.C/100)/10:0;
+  probeState=haveTraffic()?"ok":"no data";
+  probeInfo=`${prof?prof.obs:0} measurements from ${prof?prof.veh:0} buses · ${cov} km of ${(routeLen()/1000).toFixed(1)} covered · ${all.length} positions · ${fails} failed${probeDirect?" · direct (old relay)":""} · model ${ms} ms`;
   log("probes: "+probeInfo); render();
-}
-const haveTraffic=()=>sections.some(s=>s.speed!=null);
-function travelTime(a0,a1){ // seconds along the route, probe speed per section, planned speed where no data
-  if(a1<=a0) return {t:0,probe:false}; let t=0,probe=false;
-  for(const s of sections){ if(s.b<=a0||s.a>=a1) continue;
-    const x0=Math.max(a0,s.a),x1=Math.min(a1,s.b); let v=s.speed; if(v!=null) probe=true; else v=s.plan??8;
-    t+=(x1-x0)/Math.max(v,1.5); }
-  return {t,probe};
-}
-function advance(a0,sec){
-  let a=a0,rem=sec;
-  for(const s of sections){ if(s.b<=a) continue; const v=Math.max(s.speed??s.plan??8,1.5), need=(s.b-a)/v;
-    if(need>=rem) return a+rem*v; rem-=need; a=s.b; }
-  return routeLen();
 }
 
 // ---------- prediction accuracy (learned on this device) ----------
@@ -564,13 +669,12 @@ function renderAccuracy(){
 function renderTraffic(){
   const el=$("traffic"); if(!el) return;
   if(probeState==="disabled"){el.innerHTML=`<div class="card mut">${esc(probeInfo)}</div>`;return;}
-  if(!sections.length||!probeAt){el.innerHTML=`<div class="card mut">Traffic: loading bus speeds…</div>`;return;}
-  const hot=sections.filter(s=>sectionLevel(s)>=1).sort((a,b)=>a.a-b.a), withData=sections.filter(s=>s.speed!=null).length;
-  const newest=Math.max(0,...sections.map(s=>s.newest||0)), age=newest?Math.round((Date.now()-newest)/60000):null;
-  let h=`<div class="card"><h4>Traffic <span class="mut" style="font-weight:400;font-size:12px">from ${withData}/${sections.length} sections${age!=null?` · bus data ${age} min old`:""}</span></h4>`;
-  if(!hot.length) h+=withData?`<div>🟢 Moving as planned along the route.</div>`:`<div class="mut">Not enough buses on the road to measure right now.</div>`;
-  for(const s of hot){const lv=sectionLevel(s);
-    h+=`<div>${lv===2?"🔴":"🟠"} <span class="rtl">${esc(sectionName(s))}</span>: <b>${Math.round(s.speed*3.6)} km/h</b>${s.plan?` <span class="mut">vs planned ${Math.round(s.plan*3.6)} (${Math.round((s.speed/s.plan-1)*100)}%)</span>`:""} <span class="mut">· ${s.veh} bus${s.veh===1?"":"es"}</span></div>`;}
+  if(!probeAt){el.innerHTML=`<div class="card mut">Traffic: loading bus speeds…</div>`;return;}
+  const runs=trafficRuns(), hot=runs.filter(r=>r.lv>=1&&(r.a1-r.a0>=(r.lv===2?200:300)));
+  const cov=prof?Math.round(prof.conf.filter(c=>c>=ASM.minConf).length*prof.C/100)/10:0, age=prof&&prof.tRef?Math.round((Date.now()-prof.tRef)/60000):null;
+  let h=`<div class="card"><h4>Traffic <span class="mut" style="font-weight:400;font-size:12px">${prof?prof.veh:0} buses · ${cov} km covered${age!=null?` · ${age} min old`:""}</span></h4>`;
+  if(!hot.length) h+=cov?`<div>🟢 Moving as planned where measured.</div>`:`<div class="mut">Not enough buses on the road to measure right now.</div>`;
+  for(const r of hot) h+=`<div>${r.lv===2?"🔴":"🟠"} <span class="rtl">${esc(runName(r))}</span>: <b>${Math.round(r.speed*3.6)} km/h</b> <span class="mut">vs planned ${Math.round(r.plan*3.6)} (${Math.round((r.speed/r.plan-1)*100)}%)</span></div>`;
   el.innerHTML=h+"</div>";
 }
 
@@ -666,11 +770,10 @@ function animate(entry,to,D=1200){
 }
 function renderHot(){
   if(!HAVE_MAP) return; hotLayer.clearLayers();
-  for(const s of sections){ const lv=sectionLevel(s); if(lv==null) continue;
-    const tip=`${esc(sectionName(s))}: ${Math.round(s.speed*3.6)} km/h${s.plan?` (planned ${Math.round(s.plan*3.6)})`:""} · ${s.veh} bus${s.veh===1?"":"es"}${s.newest?` · ${Math.round((Date.now()-s.newest)/60000)} min old`:""}`;
-    L.polyline(s.pts,{color:LEVEL_COLOR[lv],weight:7,opacity:.8}).bindTooltip(tip).addTo(hotLayer);
-    if(lv===2){ const p=pointAt((s.a+s.b)/2);
-      L.marker(p,{icon:L.divIcon({className:"",iconSize:[0,0],html:'<div class="hot">⚠️</div>'})}).bindTooltip(tip).addTo(hotLayer); }
+  for(const r of trafficRuns()){
+    const tip=`${esc(runName(r))}: ${Math.round(r.speed*3.6)} km/h (planned ${Math.round(r.plan*3.6)})`;
+    L.polyline(slice(r.a0,r.a1),{color:LEVEL_COLOR[r.lv],weight:7,opacity:.8}).bindTooltip(tip).addTo(hotLayer);
+    if(r.lv===2&&r.a1-r.a0>=200) L.marker(pointAt(r.a1),{icon:L.divIcon({className:"",iconSize:[0,0],html:'<div class="hot">⚠️</div>'})}).bindTooltip("Jam head: "+tip).addTo(hotLayer);
   }
 }
 function renderMap(model){
@@ -727,7 +830,7 @@ function renderDiagram(model,preds){
   let h="";
   stops.forEach((s,i)=>{const mine=s.code===MY_STOP, t=nextBy.get(s.code);
     let seg=""; const nx=stops[i+1];
-    if(nx){ let worst=null; for(const x of sections){ if(x.b<=s.along||x.a>=nx.along) continue; const lv=sectionLevel(x); if(lv!=null&&(worst==null||lv>worst)) worst=lv; }
+    if(nx&&prof){ let worst=null; for(let k=Math.floor(s.along/prof.C);k<prof.n&&k*prof.C<nx.along;k++){ const lv=cellLevel(k); if(lv!=null&&(worst==null||lv>worst)) worst=lv; }
       if(worst!=null) seg=`<i class="seg" style="background:${LEVEL_COLOR[worst]}"></i>`; }
     h+=`<div class="srow${mine?" mine":""}" data-code="${esc(s.code)}">${seg}<span class="dot"></span><span class="nm">${esc(s.name)}</span>
       <span class="tm">${t?`next <b>${hm(t)}</b>`:Number.isFinite(s.off)?`+${Math.round(s.off/60)} min`:""}</span></div>`;});
@@ -811,6 +914,7 @@ async function refresh(){
     const rows=(sr.status==="fulfilled"?sr.value:[]).concat(live);
     if(rows.length>=LIMIT) log(`WARNING: hit limit ${LIMIT}`);
     const added=merge(rows); okCount++;
+    try{ if(added&&probeAt&&probeState!=="disabled") buildProfile(); }catch(e){ log("profile failed: "+e.message); }
     try{ detectPasses(); recordPredictions(buildModel()); }catch(e){ log("accuracy step failed: "+e.message); }
     log(`refresh ok: ${rows.length} rows, ${added} new, ${vehicles.size} vehicles`);
     refreshErr="";
@@ -857,6 +961,11 @@ $("tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)
 $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r)setMyStop(r.dataset.code);});
 $("lineChip").addEventListener("click",()=>{$("tabs").querySelector('[data-t="set"]').click();setSheet(Math.max(sheetIdx,1));});
 $("btnFit").addEventListener("click",fitRoute);
+(function(){const sel=$("mapStyle"); sel.innerHTML=Object.entries(STYLES).map(([k,v])=>`<option value="${k}">${esc(v.name)}${v.carto&&!CARTO_KEY?" — needs key":""}</option>`).join(""); sel.value=MAP_STYLE;
+  sel.addEventListener("change",()=>setMapStyle(sel.value));
+  $("cartoForm").addEventListener("submit",e=>{e.preventDefault();const k=$("cartoIn").value.trim();CARTO_KEY=k;store("cartokey",k||null);
+    sel.innerHTML=Object.entries(STYLES).map(([id,v])=>`<option value="${id}">${esc(v.name)}${v.carto&&!CARTO_KEY?" — needs key":""}</option>`).join("");
+    toast(k?"CARTO key saved on this device":"CARTO key removed"); setMapStyle(k?"voyager":"osm");});})();
 $("accReset").addEventListener("click",()=>{acc={};store(ACC_KEY,null);renderAccuracy();toast("Accuracy stats reset");});
 $("btnDir").addEventListener("click",()=>{const o=dirOptions();if(!o.length){toast("No other direction found");return;}
   const pick=o.find(r=>r.route_alternative===route.route_alternative)||o[0];switchTo(pick.line_ref,pick.route_short_name);});
