@@ -39,8 +39,8 @@
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const VERSION = "v3";
-const BUILD = "2026-11-24T16:25:49Z";   // UTC time this file was built/pushed
+const VERSION = "v4";
+const BUILD = "2026-11-24T16:26:21Z";   // UTC time this file was built/pushed
 const PAGE_LOADED = Date.now();
 const LOG = [];
 function log(msg){
@@ -162,11 +162,18 @@ async function refresh(){
   log("refresh start");
   const st = document.getElementById("status");
   try{
-    const from = new Date(Date.now()-WINDOW_MIN*60000).toISOString();
-    const url = `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${LINE_REF}`+
-      `&recorded_at_time_from=${encodeURIComponent(from)}&order_by=${encodeURIComponent("recorded_at_time desc")}&limit=200`;
-    st.className=""; st.textContent="Fetching live positions…";
-    const rows = await getJSON("positions",url);
+    // light query: short time window, no server-side sort (sorted here); retry with a shorter window on timeout
+    let rows=null, lastErr=null;
+    for(const win of [5,2]){
+      const from = new Date(Date.now()-win*60000).toISOString();
+      const url = `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${LINE_REF}`+
+        `&recorded_at_time_from=${encodeURIComponent(from)}&limit=100`;
+      st.className=""; st.textContent=`Fetching live positions (last ${win} min)…`;
+      try{ rows = await getJSON(`positions-${win}min`,url,45000); break; }
+      catch(e){ lastErr=e; if(!/timed out/.test(e.message)) throw e; }
+    }
+    if(!rows) throw lastErr;
+    rows.sort((x,y)=> (y.recorded_at_time>x.recorded_at_time?1:-1));
     log(`positions: ${rows.length} rows; newest=${rows[0]?rows[0].recorded_at_time:"-"}; oldest=${rows.length?rows[rows.length-1].recorded_at_time:"-"}`);
     if(rows[0]) log("row keys: "+Object.keys(rows[0]).join(","));
     if(rows[0]) log("newest row: "+JSON.stringify(rows[0]));
@@ -198,8 +205,8 @@ async function refresh(){
     const t = new Date().toLocaleTimeString("he-IL",{timeZone:"Asia/Jerusalem"});
     st.className = "";
     st.innerHTML = latest.size
-      ? `${latest.size} bus(es) with a fix in the last ${WINDOW_MIN} min · updated ${t} · refreshes every 60s <button onclick="refresh()">Refresh now</button>`
-      : `No fixes for line 484 (→Mevaseret) in the last ${WINDOW_MIN} min · checked ${t} <button onclick="refresh()">Refresh now</button>`;
+      ? `${latest.size} bus(es) with a fix in the last 5 min · updated ${t} · refreshes every 60s <button onclick="refresh()">Refresh now</button>`
+      : `No fixes for line 484 (→Mevaseret) in the last 5 min · checked ${t} <button onclick="refresh()">Refresh now</button>`;
   }catch(e){
     log("refresh failed: "+e.message);
     st.className = "err";
