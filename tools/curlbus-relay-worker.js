@@ -1,4 +1,4 @@
-// Cloudflare Worker v5: relay for the bus tracker page.
+// Cloudflare Worker v6: relay for the bus tracker page.
 //   GET /<stop_code>        -> curlbus.app stop arrivals (JSON), CORS-enabled
 //   GET /osrm/<lon,lat;...> -> OSRM road geometry through the given points
 //   GET /stride/siri_vehicle_locations/list?<box+time> -> Stride bus positions in a small map box (traffic probes)
@@ -107,11 +107,12 @@ export default {
         const r = await shared(key, "https://open-bus-stride-api.hasadna.org.il/siri_vehicle_locations/list?" + qs,
                                { "User-Agent": "bus-tracker-relay (shared cache)" });
         if (r.status === 200) {
-          // compact: only the 5 fields the page uses (5-8x smaller on the phone)
+          // compact: only the 6 fields the page uses (~15x smaller on the phone)
           let body = r.body;
           try { const a = JSON.parse(body);
                 if (Array.isArray(a)) body = JSON.stringify({ compact: 1, rows: a.map(x => [String(x.siri_ride__vehicle_ref ?? x.siri_ride__id ?? ""),
-                  Math.round(Date.parse(x.recorded_at_time) / 1000), +(+x.lat).toFixed(6), +(+x.lon).toFixed(6), x.bearing ?? null]) }); } catch (_) {}
+                  Math.round(Date.parse(x.recorded_at_time) / 1000), +(+x.lat).toFixed(6), +(+x.lon).toFixed(6), x.bearing ?? null,
+                  x.distance_from_siri_ride_stop_meters ?? null]) }); } catch (_) {}
           remember(key, { t: Date.now(), body }); return reply(body, 200, "miss", 300);
         }
         if (hit) return reply(hit.body, 200, "stale-" + r.status, 60);

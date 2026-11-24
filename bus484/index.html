@@ -146,20 +146,20 @@ tr.past td{color:var(--mut)}
       <div id="probeInfo" class="mut" style="font-size:12px"></div>
       <h3>About</h3>
       <div id="ver" class="mut" style="font-size:12px"></div>
-      <div class="mut" style="font-size:12px;margin-top:4px">Positions: <b>green</b> = live (Ministry feed via curlbus, ~1 min), <b>red</b> = Stride (Hasadna, a few min behind), <b>grey</b> = no recent update, dashed = estimate. ETAs are the operator's own predictions. Delays compare with today's timetable.</div>
+      <div class="mut" style="font-size:12px;margin-top:4px">Positions: <b>green</b> = live (~1 min old), <b>red</b> = recent (a few minutes old), <b>grey</b> = no recent update, dashed = estimate. ETAs are the operator's own predictions. Delays compare with today's timetable.</div>
       <h3>Debug log <button class="chip" id="copyLog" style="font-size:12px;padding:3px 10px">Copy</button></h3>
       <pre id="dbg"></pre>
     </div>
   </div>
   <div id="status">Loading…</div>
-  <div id="disc">Unofficial · data may be delayed or wrong · sources: Ministry of Transport (via curlbus), Hasadna Open Bus</div>
+  <div id="disc">Unofficial · data may be delayed or wrong · data: Ministry of Transport · curlbus.app · Open Bus project</div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v24";
-const BUILD="2026-11-24T19:43:23Z";
+const VERSION="v25";
+const BUILD="2026-11-24T19:46:50Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -457,12 +457,15 @@ function merge(rows){
 //    (better than an even split: stops and junctions get their share);
 //  - cells are filled with the adaptive smoothing method (Treiber & Helbing 2002): two space-time kernels, one moving
 //    downstream (free flow, +60 km/h) and one upstream (congestion, -15 km/h), blended by how congested it looks;
-//  - everything is aggregated as time per distance (pace), and blended with the timetable where data is sparse.
+//  - everything is aggregated as time per distance (pace), and blended with the timetable where data is sparse;
+//  - running and stopping are separated: a bus standing at a stop (its own line's, from Stride's distance-to-stop, or one of ours)
+//    is dwell, not traffic; it is left out of the speed profile, and our bus gets DWELL seconds per station instead.
 let sections=[], sectionSig="", probeState="off", probeInfo="", probeAt=0, probeBusy=false, probeDirect=false;
 let probeRows=[];      // raw positions from the last probe run (all lines, our road boxes)
 let prof=null;         // {C, n, pace[], conf[], plan[], tRef, obs, veh}
 const SEC_CITY=1500, SEC_HWY=4000, PROBE_MS=300000;   // fetch boxes; every 5 min
 // tuned on synthetic jams with realistic bus density; smoothing width adapts: ~25 s of planned travel (150 m city .. 600 m highway)
+const DWELL=20;   // expected seconds stopped at each intermediate station (incl. stops with no one waiting)
 const ASM={C:100, sigmaSec:25, sigmaMin:150, sigmaMax:600, tau:300, cFree:60/3.6, cCong:-15/3.6, prior:75, minConf:0.35, iter:2};
 function routeBearing(a){const p=pointAt(a),q=pointAt(Math.min(routeLen(),a+40));const y=Math.sin((q[1]-p[1])*Math.PI/180)*Math.cos(q[0]*Math.PI/180),x=Math.cos(p[0]*Math.PI/180)*Math.sin(q[0]*Math.PI/180)-Math.sin(p[0]*Math.PI/180)*Math.cos(q[0]*Math.PI/180)*Math.cos((q[1]-p[1])*Math.PI/180);return(Math.atan2(y,x)*180/Math.PI+360)%360;}
 const angDiff=(a,b)=>{const d=Math.abs(a-b)%360;return d>180?360-d:d;};
@@ -483,17 +486,22 @@ function buildSections(){   // map boxes used only to FETCH positions
   }
   log(`traffic: ${sections.length} fetch boxes`);
 }
-function planPace(a){ // timetable seconds per metre around a (includes planned stop time)
-  const L=routeLen(), x0=Math.max(0,a-150), x1=Math.min(L,a+150), o0=offAtAlong(x0), o1=offAtAlong(x1);
-  return (o0!=null&&o1!=null&&o1>o0&&x1>x0)?(o1-o0)/(x1-x0):1/10;
+function planPace(a){ // timetable RUNNING pace (s/m) around a: the gap's planned time minus the expected stop at its end
+  let i=0; while(i<stops.length-2&&stops[i+1].along<a) i++;
+  const A=stops[i],B=stops[i+1]; if(!A||!B) return 1/10;
+  const dt=B.off-A.off, da=B.along-A.along; if(!(dt>0&&da>0)) return 1/10;
+  const dw=(i+1<stops.length-1)?DWELL:0;
+  return Math.max(0.5*dt,dt-dw)/da;
 }
+const intermediateStops=()=>stops.slice(1,-1);
+function atStopPoint(p){ return (Number.isFinite(p.ds)&&p.ds<=30)||intermediateStops().some(s=>Math.abs(p.a-s.along)<=40)||(stops.length&&Math.abs(p.a-stops[0].along)<=40); }
 // probe pairs from raw positions: same filters as before (on our road, our direction, no terminals, plausible)
 function probePairs(rows){
   const byV=new Map(), seen=new Set(), L=routeLen();
   for(const r of rows){const t=tms(r);if(!Number.isFinite(r.lat)||!Number.isFinite(r.lon)||!Number.isFinite(t))continue;
     const v=String(r.siri_ride__vehicle_ref??r.siri_ride__id??"");if(!v)continue;const key=v+"|"+t;if(seen.has(key))continue;seen.add(key);
-    if(!byV.has(v))byV.set(v,[]);byV.get(v).push({t,lat:r.lat,lon:r.lon,brg:r.bearing});}
-  const out=[]; let veh=0;
+    if(!byV.has(v))byV.set(v,[]);byV.get(v).push({t,lat:r.lat,lon:r.lon,brg:r.bearing,ds:r.distance_from_siri_ride_stop_meters});}
+  const out=[]; let veh=0, dwellPairs=0;
   for(const[,arr]of byV){
     arr.sort((x,y)=>x.t-y.t); let used=false;
     for(const p of arr){const sn=snap(p.lat,p.lon);p.a=sn.along;p.d=sn.d;}
@@ -502,12 +510,14 @@ function probePairs(rows){
       if(dt<20||dt>300||p.d>50||q.d>50) continue;
       if(p.a<150||q.a>L-150) continue;                    // terminals: buses wait there
       const da=q.a-p.a; if(da<-30||da>dt*35) continue;    // other direction / impossible
-      if(dist(p.lat,p.lon,q.lat,q.lon)<30&&Number.isFinite(q.brg)&&q.brg>0&&angDiff(q.brg,routeBearing(q.a))>60) continue;
+      const moved=dist(p.lat,p.lon,q.lat,q.lon);
+      if(moved<30&&Number.isFinite(q.brg)&&q.brg>0&&angDiff(q.brg,routeBearing(q.a))>60) continue;
+      if(moved<25&&(atStopPoint(p)||atStopPoint(q))){dwellPairs++;continue;}   // standing at a stop: dwell, not traffic
       out.push({a0:p.a,a1:Math.max(p.a,q.a),t0:p.t,t1:q.t}); used=true;
     }
     if(used) veh++;
   }
-  return {pairs:out,veh};
+  return {pairs:out,veh,dwellPairs};
 }
 function buildProfile(){
   const L=routeLen(); if(L<500||!stops.length){prof=null;return;}
@@ -522,7 +532,7 @@ function profilePass(prev){
   const split=prev?prev.pace:plan;        // how to split a pair's time over its cells
   // our own buses' fixes (incl. live, ~1 min old) are probes too
   const own=[]; for(const[ref,m]of vehicles) for(const[,f]of m) own.push({...f,siri_ride__vehicle_ref:"own:"+ref});
-  const {pairs,veh}=probePairs(probeRows.concat(own));
+  const {pairs,veh,dwellPairs}=probePairs(probeRows.concat(own));
   // 1) split each pair's time over cells, proportional to planned time
   const obs=[]; let tRef=0;
   for(const o of pairs){
@@ -550,7 +560,7 @@ function profilePass(prev){
     pace[k]=Math.min(2,Math.max(1/35,w*pc+(1-w)*pf));
     conf[k]=Math.max(Df,Dc)/(Math.max(Df,Dc)+P);
   }
-  return {C,n,pace,conf,plan,tRef,obs:pairs.length,veh};
+  return {C,n,pace,conf,plan,tRef,obs:pairs.length,veh,dwellPairs};
 }
 const haveTraffic=()=>!!prof&&prof.conf.some(c=>c>=ASM.minConf);
 function cellLevel(k){ // 0 green, 1 orange, 2 red, null = not enough data
@@ -559,19 +569,31 @@ function cellLevel(k){ // 0 green, 1 orange, 2 red, null = not enough data
   return r>=0.85?0:r>=0.55?1:2;
 }
 const LEVEL_COLOR=["#2e7d32","#f29900","#c62828"];
-function travelTime(a0,a1){ // seconds, integrating the profile (timetable where no profile)
+function dwellBetween(a0,a1){ return intermediateStops().filter(s=>s.along>a0+30&&s.along<a1-30).length*DWELL; }
+function travelTime(a0,a1){ // seconds: running time from the profile (timetable where none) + DWELL per station on the way
   if(a1<=a0) return {t:0,probe:false};
+  const r=runTime(a0,a1); return {t:r.t+dwellBetween(a0,a1),probe:r.probe};
+}
+function runTime(a0,a1){
   if(!prof){ let t=0; for(let a=a0;a<a1;a+=100) t+=Math.min(100,a1-a)*planPace(a); return {t,probe:false}; }
   const C=prof.C; let t=0,probe=false;
   for(let k=Math.floor(a0/C);k<prof.n&&k*C<a1;k++){const ov=Math.min(a1,(k+1)*C)-Math.max(a0,k*C); if(ov<=0) continue; t+=ov*prof.pace[k]; if(prof.conf[k]>=ASM.minConf) probe=true;}
   return {t,probe};
 }
-function advance(a0,sec){
+function advance(a0,sec){ // where the bus is after sec seconds: runs at the profile speed, pauses DWELL s at each station
   if(!prof) return a0;
-  const C=prof.C; let a=a0,rem=sec;
-  for(let k=Math.floor(a0/C);k<prof.n;k++){const end=Math.min((k+1)*C,routeLen()), need=(end-a)*prof.pace[k];
-    if(need>=rem) return a+rem/prof.pace[k]; rem-=need; a=end;}
-  return routeLen();
+  const C=prof.C, L=routeLen(), ahead=intermediateStops().map(s=>s.along).filter(x=>x>a0+30).sort((x,y)=>x-y);
+  let a=a0, rem=sec, si=0, guard=0;
+  while(a<L&&rem>0&&guard++<5000){
+    const k=Math.min(prof.n-1,Math.floor(a/C)); let end=Math.min((k+1)*C,L), stop=false;
+    if(si<ahead.length&&ahead[si]<=end){ end=ahead[si]; stop=true; }
+    const need=Math.max(0,end-a)*prof.pace[k];
+    if(need>=rem) return a+rem/prof.pace[k];
+    rem-=need; a=end;
+    if(stop){ si++; if(rem<=DWELL) return a; rem-=DWELL; }
+    else if(a>=(k+1)*C-1e-6&&Math.floor(a/C)===k) a=(k+1)*C;   // step into next cell
+  }
+  return Math.min(a,L);
 }
 function trafficRuns(){ // contiguous stretches with the same level
   const runs=[]; if(!prof) return runs; let cur=null;
@@ -599,7 +621,7 @@ async function fetchProbes(){
   const one=async s=>{
     let rows; const viaRelay=!probeDirect;
     try{rows=await getJSON(`probe-${s.i}`,viaRelay?`${LIVE_BASE}/stride/siri_vehicle_locations/list?${qOf(s)}`:`${API}/siri_vehicle_locations/list?${qOf(s)}`,30000,false);
-      if(rows&&rows.compact) rows=rows.rows.map(([v,t,lat,lon,b])=>({siri_ride__vehicle_ref:v,recorded_at_time:new Date(t*1000).toISOString(),lat,lon,bearing:b}));
+      if(rows&&rows.compact) rows=rows.rows.map(([v,t,lat,lon,b,ds])=>({siri_ride__vehicle_ref:v,recorded_at_time:new Date(t*1000).toISOString(),lat,lon,bearing:b,distance_from_siri_ride_stop_meters:ds}));
       if(!Array.isArray(rows)) throw new Error(`probe-${s.i}: unexpected reply`);}
     catch(e){ if(viaRelay&&/HTTP 40[04]/.test(e.message)){ if(!probeDirect){probeDirect=true;log("relay has no probe endpoint (update the relay) -> asking Stride directly");} return one(s);} fails++; return; }
     for(const r of rows) if(r.lat<s.box[0]-0.002||r.lat>s.box[1]+0.002||r.lon<s.box[2]-0.002||r.lon>s.box[3]+0.002) outside++;
@@ -616,7 +638,7 @@ async function fetchProbes(){
   const t0=performance.now(); buildProfile(); const ms=Math.round(performance.now()-t0);
   const cov=prof?Math.round(prof.conf.filter(c=>c>=ASM.minConf).length*prof.C/100)/10:0;
   probeState=haveTraffic()?"ok":"no data";
-  probeInfo=`${prof?prof.obs:0} measurements from ${prof?prof.veh:0} buses · ${cov} km of ${(routeLen()/1000).toFixed(1)} covered · ${all.length} positions · ${fails} failed${probeDirect?" · direct (old relay)":""} · model ${ms} ms`;
+  probeInfo=`${prof?prof.obs:0} running measurements from ${prof?prof.veh:0} buses (${prof?prof.dwellPairs:0} at-stop excluded) · ${cov} km of ${(routeLen()/1000).toFixed(1)} covered · ${all.length} positions · ${fails} failed${probeDirect?" · direct (old relay)":""} · model ${ms} ms`;
   log("probes: "+probeInfo); render();
 }
 
@@ -802,7 +824,7 @@ function renderMap(model){
     let e=busMarkers.get(b.ref);
     if(!e){e={m:new SmoothMarker([b.r.lat,b.r.lon],{icon:busIcon(b),zIndexOffset:1000}).addTo(map)};busMarkers.set(b.ref,e);}
     else{e.m.setIcon(busIcon(b)); animate(e,[b.r.lat,b.r.lon]);}
-    e.m.bindTooltip(`${esc(title.num)} ${b.start!=null?hm(b.start)+" dep. · ":""}${b.live?"live":"Stride"} fix ${hms(tms(b.r))}`);
+    e.m.bindTooltip(`${esc(title.num)} ${b.start!=null?hm(b.start)+" dep. · ":""}${b.live?"live":"recent"} position ${hms(tms(b.r))}`);
     // estimated-position marker: persistent, moved every second by tickEst()
     let es=estMarkers.get(b.ref);
     if(b.stale){ if(es){es.m.remove();es.line.remove();estMarkers.delete(b.ref);} }
@@ -823,7 +845,7 @@ function renderCards(model){
   let h="";
   for(const b of model){
     const at=stopAtAlong(b.along), nx=nextStopAfter(b.along);
-    const badge=b.stale?`<span class="badge b-old">no update ${Math.round(b.behind)} min</span>`:b.live?`<span class="badge b-live">live</span>`:`<span class="badge b-str">Stride</span>`;
+    const badge=b.stale?`<span class="badge b-old">no update ${Math.round(b.behind)} min</span>`:b.live?`<span class="badge b-live">live</span>`:`<span class="badge b-str">recent</span>`;
     h+=`<div class="card${b.stale?" stale":""}"><h4>${busName(b)} ${badge} ${delayHtml(b)}</h4>
       <div>${nx?`Next: <span class="rtl">${esc(nx.name)}</span>`:`At the terminus`} <span class="mut">· after <span class="rtl">${esc(at.name)}</span></span></div>
       <div class="mut">Fix ${hms(tms(b.r))} (${fmtAge(b.ageS)} ago)${b.sp>0?` · ~${Math.round(b.sp*3.6)} km/h avg`:""} · ${(b.along/1000).toFixed(1)} km along${b.off>400?` · ${(b.off/1000).toFixed(1)} km off route`:""}</div>
