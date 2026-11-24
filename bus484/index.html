@@ -19,17 +19,56 @@
   .stoplbl.k{background:#ffe08a;border-color:#c60;font-weight:700}
   .busicon{background:#d32f2f;color:#fff;border:2px solid #fff;border-radius:50%;width:26px;height:26px;
     line-height:22px;text-align:center;font-weight:700;font-size:11px;box-shadow:0 0 4px #000}
+  #ver{font-size:11px;color:#666;margin-bottom:4px}
+  #panel.big{height:60vh} #map.big{bottom:60vh}
+  details{margin-top:6px} summary{font-size:12px;color:#06c}
+  #dbg{font:11px/1.35 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;background:#f5f5f5;padding:6px;margin:4px 0}
   button{font-size:13px;padding:4px 10px;margin-left:6px}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="panel">
+  <div id="ver"></div>
   <div id="status">Loading…</div>
   <div id="buses"></div>
+  <details id="dbgwrap"><summary>Debug log</summary>
+    <button onclick="copyLog()">Copy log</button>
+    <pre id="dbg"></pre>
+  </details>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+const VERSION = "v3";
+const BUILD = "2026-11-24T16:25:49Z";   // UTC time this file was built/pushed
+const PAGE_LOADED = Date.now();
+const LOG = [];
+function log(msg){
+  const t = new Date().toISOString().slice(11,23);
+  LOG.push(t+" "+msg); if(LOG.length>400) LOG.shift();
+  const el=document.getElementById("dbg"); if(el) el.textContent=LOG.join("\n");
+}
+function copyLog(){
+  const txt = verLine()+"\n"+LOG.join("\n");
+  if(navigator.clipboard) navigator.clipboard.writeText(txt).then(()=>log("log copied"),()=>log("copy failed"));
+  else log("clipboard unavailable: select the text manually");
+}
+function fmt(sec){sec=Math.floor(sec);const m=Math.floor(sec/60);return m? m+"m"+(sec%60)+"s" : sec+"s";}
+function verLine(){
+  const buildAge=(Date.now()-new Date(BUILD).getTime())/1000;
+  return `${VERSION} · built ${BUILD} (${fmt(buildAge)} ago) · page opened ${fmt((Date.now()-PAGE_LOADED)/1000)} ago`;
+}
+setInterval(()=>{const e=document.getElementById("ver"); if(e) e.textContent=verLine();},1000);
+document.getElementById("dbgwrap").addEventListener("toggle",e=>{
+  for(const id of ["panel","map"]) document.getElementById(id).classList.toggle("big",e.target.open);
+  map.invalidateSize();
+});
+window.addEventListener("error",e=>log("JS error: "+e.message+" @"+(e.lineno||"?")));
+window.addEventListener("unhandledrejection",e=>log("Unhandled rejection: "+(e.reason&&e.reason.message||e.reason)));
+log(`start ${VERSION} build=${BUILD}`);
+log(`UA: ${navigator.userAgent}`);
+log(`online=${navigator.onLine} tz=${Intl.DateTimeFormat().resolvedOptions().timeZone} now=${new Date().toISOString()} origin=${location.origin}`);
+
 const API = "https://open-bus-stride-api.hasadna.org.il";
 const LINE_REF = 19094;            // line 484, Tel Aviv Savidor -> Mevaseret Zion (Tnufa), looked up for 2026-11-24
 const REFRESH_MS = 60000;
@@ -83,19 +122,35 @@ async function loadStops(){
     const rides = await getJSON("rides",`${API}/gtfs_rides/list?gtfs_route_id=${route.id}&limit=1&order_by=start_time%20desc`);
     if(!rides.length) return;
     const rs = await getJSON("stops",`${API}/gtfs_ride_stops/list?gtfs_ride_ids=${rides[0].id}&limit=200&order_by=stop_sequence%20asc`);
+    log(`stops: ${rs.length} from API (ride ${rides[0].id})`);
     if(rs.length>3) stops = rs.map(r=>[r.stop_sequence,r.gtfs_stop__name,r.gtfs_stop__lat,r.gtfs_stop__lon]);
-  }catch(e){ /* keep built-in stops */ }
+  }catch(e){ log("stops lookup failed, using built-in stops: "+e.message); }
 }
 
+async function probe(url){
+  // no-cors request resolves (opaque) if the host is reachable even when CORS blocks reading it
+  const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),10000);
+  try{ await fetch(url,{mode:"no-cors",signal:ctl.signal}); log("probe: host reachable with no-cors => CORS is blocking reads (or response not readable)"); }
+  catch(e){ log("probe: no-cors also failed ("+e.name+": "+e.message+") => network/DNS/firewall problem, not just CORS"); }
+  finally{clearTimeout(t);}
+}
 async function getJSON(label,url,ms=20000){
+  const t0=performance.now();
+  log(`-> ${label} GET ${url}`);
   const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),ms);
   try{
     const res=await fetch(url,{signal:ctl.signal});
+    const ttfb=Math.round(performance.now()-t0);
+    log(`<- ${label} HTTP ${res.status} ${res.statusText} after ${ttfb}ms, type=${res.type}, content-type=${res.headers.get("content-type")}`);
     if(!res.ok) throw new Error(`${label}: HTTP ${res.status}`);
-    return await res.json();
+    const data=await res.json();
+    log(`   ${label} parsed in ${Math.round(performance.now()-t0)}ms total, ${Array.isArray(data)?data.length+" items":typeof data}`);
+    return data;
   }catch(e){
+    const ms2=Math.round(performance.now()-t0);
+    log(`!! ${label} failed after ${ms2}ms: ${e.name}: ${e.message}`);
     if(e.name==="AbortError") throw new Error(`${label}: timed out after ${ms/1000}s`);
-    if(e instanceof TypeError) throw new Error(`${label}: ${e.message} (network error or blocked by CORS)`);
+    if(e instanceof TypeError){ probe(url); throw new Error(`${label}: ${e.message} (network error or blocked by CORS)`); }
     throw e;
   }finally{clearTimeout(t);}
 }
@@ -104,6 +159,7 @@ function dist(a,b,c,d){const R=6371e3,t=Math.PI/180,dl=(c-a)*t,dn=(d-b)*t;
   const h=Math.sin(dl/2)**2+Math.cos(a*t)*Math.cos(c*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
 
 async function refresh(){
+  log("refresh start");
   const st = document.getElementById("status");
   try{
     const from = new Date(Date.now()-WINDOW_MIN*60000).toISOString();
@@ -111,12 +167,16 @@ async function refresh(){
       `&recorded_at_time_from=${encodeURIComponent(from)}&order_by=${encodeURIComponent("recorded_at_time desc")}&limit=200`;
     st.className=""; st.textContent="Fetching live positions…";
     const rows = await getJSON("positions",url);
+    log(`positions: ${rows.length} rows; newest=${rows[0]?rows[0].recorded_at_time:"-"}; oldest=${rows.length?rows[rows.length-1].recorded_at_time:"-"}`);
+    if(rows[0]) log("row keys: "+Object.keys(rows[0]).join(","));
+    if(rows[0]) log("newest row: "+JSON.stringify(rows[0]));
     // keep newest fix per vehicle (field name for vehicle assumed: siri_ride__vehicle_ref; falls back to ride id)
     const latest = new Map();
     for(const r of rows){
       const key = r.siri_ride__vehicle_ref ?? r.siri_ride_id ?? "?";
       if(!latest.has(key)) latest.set(key,r);
     }
+    log(`vehicles with a fix: ${latest.size} [${[...latest.keys()].join(", ")}]`);
     busLayer.clearLayers();
     const list = document.getElementById("buses"); list.innerHTML = "";
     const now = Date.now();
@@ -134,12 +194,14 @@ async function refresh(){
         `Nearest stop: <span dir="rtl">${near[1]}</span> (${Math.round(nd)} m)`;
       list.appendChild(div);
     }
+    log("refresh ok");
     const t = new Date().toLocaleTimeString("he-IL",{timeZone:"Asia/Jerusalem"});
     st.className = "";
     st.innerHTML = latest.size
       ? `${latest.size} bus(es) with a fix in the last ${WINDOW_MIN} min · updated ${t} · refreshes every 60s <button onclick="refresh()">Refresh now</button>`
       : `No fixes for line 484 (→Mevaseret) in the last ${WINDOW_MIN} min · checked ${t} <button onclick="refresh()">Refresh now</button>`;
   }catch(e){
+    log("refresh failed: "+e.message);
     st.className = "err";
     st.innerHTML = `Could not load live data: ${e.name}: ${e.message}. Will retry in 60s. <button onclick="refresh()">Retry</button>`;
   }
