@@ -175,8 +175,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v35";
-const BUILD="2026-11-24T20:09:55Z";
+const VERSION="v36";
+const BUILD="2026-11-24T20:10:55Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -993,13 +993,17 @@ function stripLayout(){
 // and compresses the rest; order is preserved and it relaxes smoothly on release.
 let lensF=50, lensK=0, lensAnim=0;
 function lensX(x){
-  if(lensK<=0) return x;
-  const f=lensF, m=3*lensK;
-  // near the ends the magnified spot slides inward (never closer than 25% to an edge), so end stations can spread too
-  const fp=f+(Math.max(25,Math.min(75,f))-f)*lensK;
-  const fish=n=>((m+1)*n)/(m*n+1);
-  if(x>=f){ const D=100-f; return D<=0?fp:fp+fish((x-f)/D)*(100-fp); }
-  const D=f; return D<=0?fp:fp-fish((f-x)/D)*fp;
+  if(lensK<=0||!stripX0) return x;
+  // the lens works between the end stations, which stay pinned; its centre is kept a little inside them and,
+  // near an end, slides inward so the stations next to a pinned end get room to spread
+  const lo=Math.min(stripX0[0],stripX0[stripX0.length-1]), hi=Math.max(stripX0[0],stripX0[stripX0.length-1]), span=hi-lo;
+  if(span<=0) return x;
+  const m=3*lensK, fish=n=>((m+1)*n)/(m*n+1);
+  const f=Math.max(lo+0.08*span,Math.min(hi-0.08*span,lensF));
+  const fp=f+(Math.max(lo+0.25*span,Math.min(hi-0.25*span,f))-f)*lensK;
+  if(x<=lo||x>=hi) return x;                                   // ends pinned (and anything outside them)
+  if(x>=f) return fp+fish((x-f)/(hi-f))*(hi-fp);
+  return fp-fish((f-x)/(f-lo))*(fp-lo);
 }
 const SX=i=>lensX(stripX0[i]);       // station position on screen (%), lens applied
 function stripX(a){ return lensX(stripXraw(a)); }
