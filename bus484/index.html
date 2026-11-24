@@ -29,11 +29,11 @@ button{font:inherit;color:inherit;cursor:pointer}
 /* bottom sheet */
 #sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,272px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
 #sheet.drag{transition:none}
-#grab{padding:8px 0 2px;touch-action:none;cursor:grab}
+#grab{position:relative;z-index:5;padding:8px 0 2px;touch-action:none;cursor:grab}
 #grab i{display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto}
 #strip{position:relative;height:84px;margin:0 16px;touch-action:none}
 #stripIn{position:absolute;inset:0}
-#strip::before{content:"";position:absolute;left:-16px;right:-16px;top:-10px;bottom:-22px}   /* larger touch area */
+#strip::before{content:"";position:absolute;left:-16px;right:-16px;top:0;bottom:-22px}   /* larger touch area */
 .sl{position:absolute;top:52px;height:5px;border-radius:3px;margin-top:-2px}
 .sl.slow{height:6px;margin-top:-3px}.sl.jam{height:8px;margin-top:-4px}
 .sl.past{background:var(--old)!important;opacity:.35!important;height:3px;margin-top:-1px}
@@ -175,8 +175,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v37";
-const BUILD="2026-11-24T20:15:18Z";
+const VERSION="v38";
+const BUILD="2026-11-24T20:16:11Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
