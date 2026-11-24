@@ -27,9 +27,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .icon.on{background:var(--acc);color:#fff}
 .leaflet-control-attribution{font-size:9px}
 /* bottom sheet */
-#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,272px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
+#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,286px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
 #sheet.drag{transition:none}
-#grab{position:relative;z-index:5;padding:8px 0 2px;touch-action:none;cursor:grab}
+#grab{position:relative;z-index:5;padding:12px 0 11px;touch-action:none;cursor:grab}
+#grab::before{content:"";position:absolute;left:0;right:0;top:-16px;bottom:0}   /* 44 px touch target (HIG), reaching a bit above the panel */
 #grab i{display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto}
 #strip{position:relative;height:84px;margin:0 16px;touch-action:none}
 #stripIn{position:absolute;inset:0}
@@ -122,7 +123,7 @@ tr.past td{color:var(--mut)}
 /* banners & toast */
 #upd{display:none;position:absolute;z-index:1002;top:calc(56px + env(safe-area-inset-top));left:8px;right:8px;background:#fff3cd;color:#000;border:1px solid #c90;border-radius:10px;padding:8px 10px;font-size:13px}
 #updBtn{background:#1565c0;color:#fff;border:0;border-radius:999px;padding:6px 14px;margin-left:8px;font-weight:600;font-size:13px}
-#toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,272px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,286px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 #toast.on{opacity:.95}
 </style>
 </head>
@@ -175,8 +176,8 @@ tr.past td{color:var(--mut)}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v38";
-const BUILD="2026-11-24T20:16:11Z";
+const VERSION="v39";
+const BUILD="2026-11-24T20:19:25Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1120,7 +1121,7 @@ setInterval(checkVersion,5*60000);
 setInterval(()=>{ if(!document.hidden&&sections.length&&Date.now()-probeAt>PROBE_MS) fetchProbes(); },20000);
 
 // ---------- UI: sheet, tabs, buttons ----------
-const SNAP=()=>[272,Math.round(innerHeight*.5),Math.round(innerHeight*.88)];
+const SNAP=()=>[286,Math.round(innerHeight*.5),Math.round(innerHeight*.88)];
 let sheetIdx=0;
 function setSheet(i){sheetIdx=Math.max(0,Math.min(2,i));const h=SNAP()[sheetIdx];document.documentElement.style.setProperty("--h",h+"px");
   if(sheetIdx===2&&$("p-set").classList.contains("sel")) $("dbg").textContent=LOG.join("\n");}
