@@ -232,8 +232,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v72";
-const BUILD="2026-11-25T17:38:51Z";
+const VERSION="v73";
+const BUILD="2026-11-25T17:40:10Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -428,10 +428,11 @@ if(HAVE_MAP){
   const zc=()=>map.getContainer().classList.toggle("far",map.getZoom()<12); map.on("zoomend",zc); zc();
 }else{ $("map").innerHTML='<p style="padding:5em 1em">Map library failed to load. Lists still update.</p>'; log("Leaflet missing"); }
 function sheetH(){return $("sheet").getBoundingClientRect().height||190;}
-function fitRoute(){ if(HAVE_MAP&&routeLine) map.fitBounds(routeLine.getBounds(),{paddingTopLeft:[20,70],paddingBottomRight:[20,sheetH()+10]}); }
+function fitRoute(){ if(!HAVE_MAP) return; const b=routeLine?routeLine.getBounds():(stops.length>1?L.latLngBounds(stops.map(s=>[s.lat,s.lon])):null);
+  if(b) map.fitBounds(b,{paddingTopLeft:[20,70],paddingBottomRight:[20,sheetH()+10]}); }
 
 // route geometry (road shape from OSRM, else straight lines)
-let road=null, routePts=[], routeCum=[0];
+let road=null, roadFailed=false, routePts=[], routeCum=[0];
 function setRoute(pts){routePts=pts;routeCum=[0];for(let i=1;i<pts.length;i++)routeCum.push(routeCum[i-1]+dist(pts[i-1][0],pts[i-1][1],pts[i][0],pts[i][1]));}
 function snap(lat,lon){let best={along:0,d:Infinity};const kx=Math.cos(lat*Math.PI/180)*111320,ky=110540;
   for(let i=1;i<routePts.length;i++){const[ay,ax]=routePts[i-1],[by,bx]=routePts[i];const ux=(bx-ax)*kx,uy=(by-ay)*ky,px=(lon-ax)*kx,py=(lat-ay)*ky,L2=ux*ux+uy*uy;
@@ -452,7 +453,10 @@ function drawStops(){
   layoutRoute();
   if(!HAVE_MAP) return;
   stopLayer.clearLayers(); if(routeLine) routeLine.remove();
-  routeLine=L.polyline(routePts,{color:"#1565c0",weight:road?5:3,opacity:road?.65:.9,dashArray:road?null:"6 6"}).addTo(stopLayer);
+  // the road shape, once known; no dashed placeholder (it flickered on load). If the road can't be fetched at all,
+  // a faint straight line joins the stations.
+  routeLine=road?L.polyline(routePts,{color:"#1565c0",weight:5,opacity:.65}).addTo(stopLayer)
+               :roadFailed?L.polyline(routePts,{color:"#1565c0",weight:2,opacity:.35}).addTo(stopLayer):null;
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, dest=s.code===TO_STOP, end=i===0||i===stops.length-1;
     L.circleMarker([s.lat,s.lon],{radius:mine||dest?9:6,color:mine?"#c60":dest?"#0d47a1":"#1565c0",fillColor:mine?"#ffcf33":dest?"#64b5f6":"#fff",fillOpacity:1,weight:3})
@@ -463,17 +467,19 @@ function drawStops(){
 }
 async function loadRoad(){
   if(stops.length<2) return;
-  const key="road:"+stops.map(s=>(+s.lat).toFixed(4)+","+(+s.lon).toFixed(4)).join(";");
-  const c=load(key); if(c){try{road=JSON.parse(c);log(`road: ${road.length} pts (cache)`);drawStops();render();return;}catch(_){}}
+  // cached by line + station codes (stable), so the timetable's slightly different coordinates don't cause a re-fetch
+  const key="road2:"+REF+":"+stops.map(s=>s.code).join(","), oldKey="road:"+stops.map(s=>(+s.lat).toFixed(4)+","+(+s.lon).toFixed(4)).join(";");
+  if(road&&loadRoad.forKey===key) return;
+  const c=load(key)||load(oldKey); if(c){try{road=JSON.parse(c);loadRoad.forKey=key;store(key,c);log(`road: ${road.length} pts (cache)`);drawStops();render();return;}catch(_){}}
   try{
     const coords=stops.map(s=>(+s.lon).toFixed(6)+","+(+s.lat).toFixed(6)).join(";");
     let d;
     try{ d=await getJSON("road(relay)",`${LIVE_BASE}/osrm/${coords}`,TIMEOUT_MS,false); }   // relay caches shapes 24 h
     catch(e){ log("road via relay failed, trying OSRM directly"); d=await getJSON("road",`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,TIMEOUT_MS,false); }
     if(d.code!=="Ok") throw new Error("OSRM "+d.code);
-    road=d.routes[0].geometry.coordinates.map(([x,y])=>[y,x]); store(key,JSON.stringify(road));
+    road=d.routes[0].geometry.coordinates.map(([x,y])=>[y,x]); store(key,JSON.stringify(road)); loadRoad.forKey=key; roadFailed=false;
     log(`road: ${road.length} pts, ${(d.routes[0].distance/1000).toFixed(1)} km`); drawStops(); render();
-  }catch(e){log("road failed, straight lines: "+e.message);}
+  }catch(e){log("road failed, straight lines: "+e.message); if(!road){ roadFailed=true; drawStops(); render(); } }
 }
 
 // ---------- next service day (when today's buses are done) ----------
