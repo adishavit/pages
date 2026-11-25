@@ -232,8 +232,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v74";
-const BUILD="2026-11-25T17:43:02Z";
+const VERSION="v75";
+const BUILD="2026-11-25T18:04:50Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -424,6 +424,7 @@ if(HAVE_MAP){
     L.DomUtil.setPosition(this._icon,p); this._icon.style.zIndex=Math.round(p.y+this.options.zIndexOffset); } return this; }});
   L.control.attribution({position:"topright",prefix:false}).addTo(map);
   setMapStyle(MAP_STYLE,true);
+  map.createPane("stopsPane").style.zIndex=450;   // stations above the route and congestion lines, below bus markers
   stopLayer=L.layerGroup().addTo(map); hotLayer=L.layerGroup().addTo(map); trailLayer=L.layerGroup().addTo(map); estLayer=L.layerGroup().addTo(map); meLayer=L.layerGroup().addTo(map);
   const zc=()=>map.getContainer().classList.toggle("far",map.getZoom()<12); map.on("zoomend",zc); zc();
 }else{ $("map").innerHTML='<p style="padding:5em 1em">Map library failed to load. Lists still update.</p>'; log("Leaflet missing"); }
@@ -459,7 +460,7 @@ function drawStops(){
                :roadFailed?L.polyline(routePts,{color:"#1565c0",weight:2,opacity:.35}).addTo(stopLayer):null;
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, dest=s.code===TO_STOP, end=i===0||i===stops.length-1;
-    L.circleMarker([s.lat,s.lon],{radius:mine||dest?9:6,color:mine?"#c60":dest?"#0d47a1":"#1565c0",fillColor:mine?"#ffcf33":dest?"#64b5f6":"#fff",fillOpacity:1,weight:3})
+    L.circleMarker([s.lat,s.lon],{pane:"stopsPane",radius:mine||dest?9:6,color:mine?"#c60":dest?"#0d47a1":"#1565c0",fillColor:mine?"#ffcf33":dest?"#64b5f6":"#fff",fillOpacity:1,weight:3})
       .bindTooltip(esc(s.name),{permanent:true,direction:"right",className:"stoplbl"+(mine?" mine":dest?" dest":end?"":" n"),interactive:true})
       .on("click",()=>tapStation(s.code)).addTo(stopLayer);
   });
@@ -1015,7 +1016,7 @@ function renderHot(){
   if(!HAVE_MAP) return; hotLayer.clearLayers();
   for(const r of trafficRuns()){
     const tip=`${esc(runName(r))}: ${Math.round(r.speed*3.6)} km/h (planned ${Math.round(r.plan*3.6)})`;
-    L.polyline(slice(r.a0,r.a1),{color:LEVEL_COLOR[r.lv],weight:7,opacity:.8}).bindTooltip(tip).addTo(hotLayer);
+    L.polyline(slice(r.a0,r.a1),{color:LEVEL_COLOR[r.lv],weight:5,opacity:1}).bindTooltip(tip).addTo(hotLayer);   // recolours the route line underneath
     if(r.lv===2&&r.a1-r.a0>=200) L.marker(pointAt(r.a1),{icon:L.divIcon({className:"",iconSize:[0,0],html:'<div class="hot">⚠️</div>'})}).bindTooltip("Jam head: "+tip).addTo(hotLayer);
   }
 }
@@ -1026,9 +1027,6 @@ function renderMap(model){
   const keep=new Set();
   for(const b of model){
     keep.add(b.ref);
-    // trail along the road (reports are ~1 min apart: straight lines between them would cut corners)
-    if(b.fx.length>1&&routePts.length>1){ const first=snap(b.fx[0].lat,b.fx[0].lon);
-      if(first.d<200&&b.off<200&&b.along>first.along+20) L.polyline(slice(first.along,b.along),{color:b.stale?"#9aa0a6":b.live?"#2e7d32":"#d32f2f",weight:3,opacity:.55}).addTo(trailLayer); }
     let e=busMarkers.get(b.ref);
     if(!e){ const ref=b.ref; e={m:new SmoothMarker([b.r.lat,b.r.lon],{icon:busIcon(b),zIndexOffset:1000}).addTo(map)};busMarkers.set(b.ref,e);
       e.m.on("click",ev=>{ L.DomEvent.stopPropagation(ev); selectBus(ref); }); }
