@@ -31,12 +31,13 @@ button{font:inherit;color:inherit;cursor:pointer}
 .icon.on{background:var(--acc);color:#fff}
 .leaflet-control-attribution{font-size:10px}
 /* bottom sheet */
-#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,286px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
+#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,310px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
 #sheet.drag{transition:none}
 #grab{position:relative;z-index:5;padding:12px 0 11px;touch-action:none;cursor:grab}
 #grab::before{content:"";position:absolute;left:0;right:0;top:-16px;bottom:0}   /* 44 px touch target (HIG), reaching a bit above the panel */
 #grab i{display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto}
-#strip{position:relative;height:84px;margin:0 16px;touch-action:none}
+#strip{position:relative;height:108px;margin:0 16px;touch-action:none}
+#grab,#strip,#hero,#tabs{flex-shrink:0}   /* only the tab content may shrink, or bus tags spill into the hero */
 #stripIn{position:absolute;inset:0}
 #strip::before{content:"";position:absolute;left:-16px;right:-16px;top:0;bottom:-22px}   /* larger touch area */
 .sl{position:absolute;top:52px;height:5px;border-radius:3px;margin-top:-2px}
@@ -55,12 +56,13 @@ button{font:inherit;color:inherit;cursor:pointer}
 .slab.mine>span{background:#ffcf33;color:#000;font-weight:700;border-radius:3px}
 .sgap,.sarr{position:absolute;top:58px;transform:translateX(-50%);font-size:11px;color:var(--mut);background:var(--bg);padding:0 3px;white-space:nowrap}
 .sarr{font-size:9px;top:46px;background:none;opacity:.7}
-.sdest{position:absolute;right:0;top:70px;font-size:11px;font-weight:600;color:var(--acc);direction:rtl;unicode-bidi:isolate}
+.sdest{position:absolute;right:0;top:58px;font-size:11px;font-weight:600;color:var(--acc);direction:rtl;unicode-bidi:isolate}
 .sdest.l{right:auto;left:0}
 .sfix{position:absolute;top:52px;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--str);z-index:3}
 .sfix.live{background:var(--live)}.sfix.old{background:var(--old)}
-.sbus{position:absolute;top:62px;transform:translateX(-50%);background:var(--str);color:#fff;border-radius:8px;padding:0 5px;font:700 11px/14px system-ui,sans-serif;white-space:nowrap;z-index:4;transition:left 1s linear;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.sbus{position:absolute;top:76px;transform:translateX(-50%);background:var(--str);color:#fff;border-radius:8px;padding:0 5px;font:700 11px/14px system-ui,sans-serif;white-space:nowrap;z-index:4;transition:left 1s linear;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .sbus small{font-weight:400;margin-left:3px}
+.sbus.r2{top:92px}   /* second row when tags would overlap */
 .sbus.live{background:var(--live)}.sbus.old{background:var(--old)}
 .sbus.focus{outline:2px solid #ffcf33}
 #strip.lensing .sbus{transition:none}
@@ -129,7 +131,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 /* banners & toast */
 #upd{display:none;position:absolute;z-index:1002;top:calc(56px + env(safe-area-inset-top));left:8px;right:8px;background:#fff3cd;color:#000;border:1px solid #c90;border-radius:10px;padding:8px 10px;font-size:13px}
 #updBtn{background:#1565c0;color:#fff;border:0;border-radius:999px;padding:6px 14px;margin-left:8px;font-weight:600;font-size:13px}
-#toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,286px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,310px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 #toast.on{opacity:.95}
 /* freshness pill */
 .pill{display:inline-block;border-radius:999px;padding:0 7px;font-weight:600;font-size:11px;line-height:17px;color:#fff;background:var(--old)}
@@ -214,8 +216,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v55";
-const BUILD="2026-11-25T04:37:26Z";
+const VERSION="v56";
+const BUILD="2026-11-25T05:18:44Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1250,10 +1252,22 @@ function renderStrip(model){
     h+=`<i class="sfix ${cls}" style="left:${stripX(b.along)}%"></i>`;
     h+=`<span class="sbus ${cls}${fb&&fb.ref===b.ref?" focus":""}" id="sb-${esc(b.ref)}" style="left:${stripX(busNowAlong(b))}%">${esc(title.num)}${b.start!=null?`<small>${hm(b.start)}</small>`:""}</span>`;
   }
-  el.innerHTML=h;
+  el.innerHTML=h; stackTags();
 }
 function tickStrip(){ if(document.hidden||!stripX0) return;
-  for(const b of lastModel){const e=document.getElementById("sb-"+b.ref); if(e) e.style.left=stripX(busNowAlong(b))+"%";} }
+  for(const b of lastModel){const e=document.getElementById("sb-"+b.ref); if(e) e.style.left=stripX(busNowAlong(b))+"%";}
+  stackTags(); }
+// bus tags: first row; a tag that would overlap its left neighbour drops to the second row
+function stackTags(){
+  const host=$("stripIn"), W=host?host.clientWidth:0; if(!W) return;
+  const tags=[...host.querySelectorAll(".sbus")].map(e=>({e,c:parseFloat(e.style.left)/100*W,w:e.offsetWidth||60})).sort((a,b)=>a.c-b.c);
+  const end=[-1e9,-1e9];
+  for(const t of tags){ const l=t.c-t.w/2, row=l>=end[0]+4?0:(l>=end[1]+4?1:(end[0]<=end[1]?0:1));
+    end[row]=t.c+t.w/2; t.e.classList.toggle("r2",row===1); }
+  // the "~N min" gap labels give way to the destination label
+  const d=host.querySelector(".sdest"); if(d){ const dr=d.getBoundingClientRect();
+    for(const g of host.querySelectorAll(".sgap")){ const gr=g.getBoundingClientRect(); g.style.visibility=(gr.right>dr.left-4&&gr.left<dr.right+4)?"hidden":""; } }
+}
 setInterval(tickStrip,1000);
 setInterval(()=>{ if(!document.hidden&&lastModel) renderStrip(lastModel); },30000);   // keep dimming / ETA current
 
@@ -1316,7 +1330,7 @@ setInterval(()=>{ if(!document.hidden) checkVersion(); },5*60000);
 setInterval(()=>{ if(!document.hidden&&sections.length&&Date.now()-probeAt>PROBE_MS) fetchProbes(); },20000);
 
 // ---------- UI: sheet, tabs, buttons ----------
-const SNAP=()=>[286,Math.round(innerHeight*.5),Math.round(innerHeight*.88)];
+const SNAP=()=>[310,Math.round(innerHeight*.5),Math.round(innerHeight*.88)];
 let sheetIdx=0;
 function setSheet(i){sheetIdx=Math.max(0,Math.min(2,i));const h=SNAP()[sheetIdx];document.documentElement.style.setProperty("--h",h+"px");
   if(sheetIdx===2&&$("p-set").classList.contains("sel")) $("dbg").textContent=LOG.join("\n");}
