@@ -232,8 +232,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v75";
-const BUILD="2026-11-25T18:04:50Z";
+const VERSION="v76";
+const BUILD="2026-11-25T18:05:53Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1002,8 +1002,7 @@ function myStopPredictions(model){
 function goneBus(b){ if(b.ref===SEL_BUS) return false; const t=toStop(), f=myStop(), lim=t||f; return !!lim&&b.along>lim.along+30; }
 function busIcon(b,est){
   const cls=(est?"est":b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":"");
-  const arr=!est&&b.brg!=null&&!b.stale?`<i class="arr" style="transform:rotate(${Math.round(b.brg)}deg)"></i>`:"";
-  return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${cls}${SEL_BUS===b.ref?" sel":""}">${arr}${esc(title.num)}<small>${est?"est.":depLabel(b)}</small></div>`});
+  return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${cls}${SEL_BUS===b.ref?" sel":""}">${esc(title.num)}<small>${est?"est.":depLabel(b)}</small></div>`});
 }
 function animate(entry,to,D=1200){
   const from=entry.m.getLatLng(); if(from.lat===to[0]&&from.lng===to[1]) return;
