@@ -125,6 +125,10 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 .bm .arr{position:absolute;left:50%;top:50%;width:0;height:0;margin:-30px 0 0 -7px;border:7px solid transparent;border-bottom:11px solid #111;transform-origin:7px 30px;opacity:.85}
 .stoplbl{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:11px;white-space:nowrap;direction:rtl;box-shadow:none}
 .stoplbl.mine{background:#ffcf33;color:#000;border-color:#c60;font-weight:700}
+.stoplbl.dest{background:#64b5f6;color:#000;border-color:#0d47a1;font-weight:700}
+.sd.dest{width:14px;height:14px;margin:-7px 0 0 -7px;background:#64b5f6;border-color:#0d47a1}
+.slab.dest>span{background:#64b5f6;color:#000;font-weight:700;border-radius:3px}
+.srow.dest .dot{background:#64b5f6;border-color:#0d47a1;width:20px;height:20px;left:16px}.srow.dest .nm{font-weight:700}
 .far .stoplbl.n{display:none}
 .hot{position:absolute;transform:translate(-50%,-50%);font-size:20px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
 .seg{position:absolute;left:24px;width:4px;top:50%;height:100%;z-index:1;opacity:.95}
@@ -197,7 +201,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
   <div id="panes">
     <div class="pane sel" id="p-stop"><div id="board"></div><div class="sub" id="depsHd">Timetable</div><div id="deps"></div></div>
     <div class="pane" id="p-buses"><div id="buses"></div></div>
-    <div class="pane" id="p-line"><div id="traffic"></div><div id="lineHint" class="mut" style="font-size:12px">Tap a station to make it your stop.</div><div id="diagram"></div></div>
+    <div class="pane" id="p-line"><div id="traffic"></div><div id="lineHint" class="mut" style="font-size:12px">Tap a station to board there; tap a later one to get off there. Tap again to clear.</div><div id="diagram"></div></div>
     <div class="pane set" id="p-set">
       <h3>Map style</h3>
       <select id="mapStyle" style="font:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);max-width:100%"></select>
@@ -224,8 +228,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v62";
-const BUILD="2026-11-25T16:03:28Z";
+const VERSION="v63";
+const BUILD="2026-11-25T16:35:33Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -251,7 +255,8 @@ const API="https://open-bus-stride-api.hasadna.org.il";
 const qs=new URLSearchParams(location.search);
 let LINE=qs.get("line")||"484";
 let REF=+qs.get("ref")||(LINE==="484"?19094:0);
-let MY_STOP=qs.get("stop")||load("mystop:"+LINE+":"+REF)||(REF===19094?"20750":"");   // default Karliback for 484 -> Mevaseret
+let MY_STOP=qs.get("stop")||load("mystop:"+LINE+":"+REF)||(REF===19094?"20750":"");   // From (boarding); default Karliback for 484 -> Mevaseret
+let TO_STOP=qs.get("to")||load("tostop:"+LINE+":"+REF)||"";                          // To (getting off); per line direction
 const RELAY_DEFAULT="https://shiny-shadow-cc40.adishavit.workers.dev";
 const relayOk=u=>{ try{ const x=new URL(u); return x.protocol==="https:"&&/(^|\.)adishavit\.workers\.dev$/.test(x.hostname)&&x.pathname.replace(/\/$/,"")===""; }catch(_){ return false; } };
 let LIVE_BASE=RELAY_DEFAULT;
@@ -263,7 +268,7 @@ let LIVE_BASE=RELAY_DEFAULT;
 const REFRESH_MS=60000, IDLE_REFRESH_MS=180000, TIMEOUT_MS=30000, LIMIT=500, FIRST_WINDOW_MIN=30, KEEP_MIN=30, HISTORY_MIN=90, STALE_MIN=5;   // KEEP: shown on map/cards; HISTORY: kept for "passed my stop" (hourly lines run late)
 log(`start ${VERSION} build=${BUILD} line=${LINE} ref=${REF} stop=${MY_STOP} relay=${LIVE_BASE}`);
 log(`UA: ${navigator.userAgent} | origin=${location.origin} | secure=${window.isSecureContext}`);
-function setUrl(){const p=new URLSearchParams(location.search);if(typeof MAP_STYLE!=="undefined"&&MAP_STYLE!=="voyager")p.set("map",MAP_STYLE);else p.delete("map");p.set("line",LINE);if(REF)p.set("ref",REF);if(MY_STOP)p.set("stop",MY_STOP);else p.delete("stop");p.delete("relay");p.delete("v");
+function setUrl(){const p=new URLSearchParams(location.search);if(typeof MAP_STYLE!=="undefined"&&MAP_STYLE!=="voyager")p.set("map",MAP_STYLE);else p.delete("map");p.set("line",LINE);if(REF)p.set("ref",REF);if(MY_STOP)p.set("stop",MY_STOP);else p.delete("stop");if(TO_STOP)p.set("to",TO_STOP);else p.delete("to");p.delete("relay");p.delete("v");
   try{history.replaceState(null,"",location.pathname+"?"+p.toString());}catch(_){}}
 
 // ---------- network ----------
@@ -445,10 +450,10 @@ function drawStops(){
   stopLayer.clearLayers(); if(routeLine) routeLine.remove();
   routeLine=L.polyline(routePts,{color:"#1565c0",weight:road?5:3,opacity:road?.65:.9,dashArray:road?null:"6 6"}).addTo(stopLayer);
   stops.forEach((s,i)=>{
-    const mine=s.code===MY_STOP, end=i===0||i===stops.length-1;
-    L.circleMarker([s.lat,s.lon],{radius:mine?9:6,color:mine?"#c60":"#1565c0",fillColor:mine?"#ffcf33":"#fff",fillOpacity:1,weight:3})
-      .bindTooltip(esc(s.name),{permanent:true,direction:"right",className:"stoplbl"+(mine?" mine":end?"":" n"),interactive:true})
-      .on("click",()=>setMyStop(s.code)).addTo(stopLayer);
+    const mine=s.code===MY_STOP, dest=s.code===TO_STOP, end=i===0||i===stops.length-1;
+    L.circleMarker([s.lat,s.lon],{radius:mine||dest?9:6,color:mine?"#c60":dest?"#0d47a1":"#1565c0",fillColor:mine?"#ffcf33":dest?"#64b5f6":"#fff",fillOpacity:1,weight:3})
+      .bindTooltip(esc(s.name),{permanent:true,direction:"right",className:"stoplbl"+(mine?" mine":dest?" dest":end?"":" n"),interactive:true})
+      .on("click",()=>tapStation(s.code)).addTo(stopLayer);
   });
   if(!fitted&&stops.length){fitRoute();fitted=true;}
 }
@@ -489,6 +494,27 @@ function nextServiceText(){
 
 // ---------- my stop ----------
 function myStop(){return stops.find(s=>s.code===MY_STOP)||null;}
+function toStop(){return stops.find(s=>s.code===TO_STOP)||null;}
+function setToStop(code){ TO_STOP=code?String(code):""; store("tostop:"+LINE+":"+REF,TO_STOP||null); setUrl();
+  const s=toStop(); toast(s?`Getting off: ${s.name}`:"Getting-off stop cleared"); drawStops(); render(); }
+function clearMyStop(){ MY_STOP=""; store("mystop:"+LINE+":"+REF,null); setUrl(); toast("Boarding stop cleared"); drawStops(); render(); }
+// A station tap sets From (boarding) or To (getting off), in the line's direction:
+//  tapping From/To clears it; first tap or before From -> From; after To (or after From with no To) -> To;
+//  between them: To if the selected bus has already passed From (you're on it); otherwise the nearer one on the
+//  strip as drawn, and the middle 15% goes to To (the destination is what people refine).
+function tapStation(code){
+  code=String(code); const x=stops.findIndex(s=>s.code===code); if(x<0) return;
+  if(code===MY_STOP) return clearMyStop();
+  if(code===TO_STOP) return setToStop("");
+  const fi=stops.findIndex(s=>s.code===MY_STOP), ti=stops.findIndex(s=>s.code===TO_STOP);
+  if(fi<0){ if(ti>=0&&x>=ti) TO_STOP=""; return setMyStop(code); }
+  if(x<fi) return setMyStop(code);
+  if(ti<0||x>ti) return setToStop(code);
+  const sb=SEL_BUS&&lastModel.find(b=>b.ref===SEL_BUS);
+  if(sb&&!sb.stale&&busNowAlong(sb)>stops[fi].along+30) return setToStop(code);
+  const r=(SX(x)-SX(fi))/((SX(ti)-SX(fi))||1);
+  return r<0.425?setMyStop(code):setToStop(code);
+}
 function setMyStop(code){
   MY_STOP=String(code); store("mystop:"+LINE+":"+REF,MY_STOP); setUrl();
   const s=myStop(); toast(s?`My stop: ${s.name}`:"My stop set"); log("my stop = "+MY_STOP);
@@ -808,6 +834,9 @@ function methodPreds(b,s){ // every method's prediction for bus b at stop s (ms)
   if(b.start!=null&&Number.isFinite(s.off)){out.tt=b.start+s.off*1000; if(b.delay!=null) out.sched=out.tt+b.delay*60000;}
   return out;
 }
+// OUR estimate: congestion model (speeds of all buses on the way), else the bus's own recent speed
+function ourPred(b,s){ if(!b||b.stale) return null; const mp=methodPreds(b,s); const t=mp.traffic??mp.est; return t!=null?Math.max(Date.now(),t):null; }
+function oursTxt(t,ref){ return t!=null&&(ref==null||Math.abs(t-ref)>=60000)?` · <span title="our congestion-model estimate">ours ~<b>${hm(t)}</b></span>`:""; }
 function recordPredictions(model){
   for(const b of model){ if(b.stale) continue;
     for(const s of stops){ if(s.along<=b.along+30) continue; const mp=methodPreds(b,s); for(const m in mp) logPred(b.ref,s.code,m,mp[m]); } }
@@ -1029,7 +1058,7 @@ function renderDiagram(model,preds){
     let seg=""; const nx=stops[i+1];
     if(nx&&prof){ let worst=null; for(let k=Math.floor(s.along/prof.C);k<prof.n&&k*prof.C<nx.along;k++){ const lv=cellLevel(k); if(lv!=null&&(worst==null||lv>worst)) worst=lv; }
       if(worst!=null) seg=`<i class="seg" style="background:${LEVEL_COLOR[worst]}"></i>`; }
-    h+=`<div class="srow${mine?" mine":""}" data-code="${esc(s.code)}" role="button" tabindex="0">${seg}<span class="dot"></span><span class="nm">${esc(s.name)}</span>
+    h+=`<div class="srow${mine?" mine":s.code===TO_STOP?" dest":""}" data-code="${esc(s.code)}" role="button" tabindex="0">${seg}<span class="dot"></span><span class="nm">${esc(s.name)}</span>
       <span class="tm">${t?`next <b>${hm(t)}</b>`:Number.isFinite(s.off)?`+${Math.round(s.off/60)} min`:""}</span></div>`;});
   // buses between rows (by distance along the route)
   for(const b of model){
@@ -1104,7 +1133,7 @@ function renderBoard(model){
     const away=b&&!b.stale?stopsAway(b,s):null;
     const from=[away!=null?(away===0?"arriving":`${away} stop${away===1?"":"s"} away`):"", st!=null?`${st>now?"departs":"departed"} <span class="rtl">${esc(org)}</span> ${hm(st)}`:""].filter(Boolean).join(" · ");
     h+=`<div class="brow"><div class="bmin">${m===0?"now":`${m}<small> min</small>`}</div>
-      <div class="binfo"><div><b>${hm(x.t)}</b> ${badge} ${b?delayHtml(b):""}</div><div class="mut">${from}</div></div></div>`;
+      <div class="binfo"><div><b>${hm(x.t)}</b> ${badge} ${b?delayHtml(b):""}${x.src!=="traffic"&&x.src!=="est"?oursTxt(ourPred(b,s),x.t):""}</div><div class="mut">${from}</div></div></div>`;
   }
   el.innerHTML=h;
 }
@@ -1123,7 +1152,15 @@ function renderFresh(){
 }
 function renderHero(model){
   const s=myStop();
-  $("heroStop").innerHTML=s?`My stop: <span class="rtl"><b>${esc(s.name)}</b></span>`:"👆 <b>Tap your station</b> on the line above";
+  const ts=toStop();
+  $("heroStop").innerHTML=s?`My stop: <span class="rtl"><b>${esc(s.name)}</b></span>${ts?` → <span class="rtl"><b>${esc(ts.name)}</b></span>`:""}`:"👆 <b>Tap your station</b> on the line above";
+  const sb=SEL_BUS&&model.find(b=>b.ref===SEL_BUS);
+  if(ts&&sb&&!sb.stale&&(!s||busNowAlong(sb)>s.along+30)&&busNowAlong(sb)<ts.along-30){   // on your bus: arrival at To
+    const mp=methodPreds(sb,ts), mk=methodRank().find(k=>mp[k]!=null), our=ourPred(sb,ts);
+    if(our!=null||mk){ const t=our!=null?our:Math.max(Date.now(),mp[mk]), m=Math.round((t-Date.now())/60000);
+      $("heroMin").textContent=m===0?"now":m+" min";
+      $("heroTxt").innerHTML=`Arriving at <span class="rtl"><b>${esc(ts.name)}</b></span> ~${hm(t)}`;
+      $("heroNext").innerHTML=`On the ${esc(title.num)} that departed ${sb.start!=null?hm(sb.start):"earlier"}${our!=null&&mk&&mp[mk]!=null&&Math.abs(mp[mk]-our)>=60000?` · operator ~${hm(Math.max(Date.now(),mp[mk]))}`:""}`; return; } }
   if(!s){$("heroMin").textContent="–";$("heroTxt").textContent="";$("heroNext").textContent="";return;}
   const p=myStopPredictions(model);
   if(!p.length){ const loading=(refreshErr||!rides.length)&&!lastModel.length;
@@ -1131,12 +1168,19 @@ function renderHero(model){
     $("heroNext").innerHTML=loading?"":nextServiceText(); return; }   // (no "missed" note: nothing else to compare)
   const m=Math.max(0,Math.round((p[0].t-Date.now())/60000));
   $("heroMin").textContent=m===0?"now":m+" min";
-  $("heroTxt").innerHTML=`Next <b>${esc(title.num)}</b> at ${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}`;
+  const nb0=p[0].ref&&model.find(b=>b.ref===p[0].ref);
+  $("heroTxt").innerHTML=`Next <b>${esc(title.num)}</b> at ${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}${p[0].src!=="traffic"&&p[0].src!=="est"?oursTxt(ourPred(nb0,s),p[0].t):""}`;
   const ps=passedMyStop(), g=[...ps].reverse().find(x=>!x.before), gb=ps[ps.length-1], ago=g?Math.round((Date.now()-g.t)/60000):null;
   const missed=g&&ago<=20?`<span class="${ago<=5?"d-early":""}">${ago<=5?"Just missed one":"Last one"}: passed ${ago<=1?"a minute":ago+" min"} ago</span>`
               :gb&&gb.before&&Date.now()-gb.t<=20*60000?`One passed before ${hm(gb.t)}`:"";
   const then=p.slice(1,3).length?"Then: "+p.slice(1,3).map(x=>hm(x.t)).join(", "):"";
-  $("heroNext").innerHTML=[missed,then].filter(Boolean).join(" · ");
+  // estimated arrival at To for the next bus: live methods if it has a position, else the timetable gap
+  let arr="";
+  if(ts&&ts.along>s.along){ const nb=p[0].ref&&model.find(b=>b.ref===p[0].ref); let ta=null;
+    if(nb&&!nb.stale){ ta=ourPred(nb,ts); if(ta==null){ const mp=methodPreds(nb,ts), mk=methodRank().find(k=>mp[k]!=null); if(mk) ta=mp[mk]; } }
+    if(ta==null&&Number.isFinite(ts.off)&&Number.isFinite(s.off)) ta=p[0].t+(ts.off-s.off)*1000;
+    if(ta!=null) arr=`→ <span class="rtl">${esc(shortName(ts.name))}</span> ~<b>${hm(ta)}</b>`; }
+  $("heroNext").innerHTML=[arr,missed,then].filter(Boolean).join(" · ");
 }
 // route as one right-to-left Hebrew phrase: origin ← destination (destination emphasised, no English in between)
 // one weight for both names: <b> inside the 600-weight chip became 900, which Segoe UI lacks for Hebrew, so a fallback font was used
@@ -1249,10 +1293,11 @@ function renderBusCard(model){ const el=$("busCard"); if(!el) return;
   if(!b){ el.hidden=true; if(SEL_BUS&&model.length){ SEL_BUS=null; CARD_OPEN=false; } return; }
   if(!CARD_OPEN){ el.hidden=true; return; }
   const now=Date.now(), a=busNowAlong(b), age=Math.round((now-tms(b.r))/60000), rank=methodRank();
-  const next=stops.filter(s=>s.along>a+30).slice(0,6).map(s=>{ const mp=methodPreds(b,s), m=rank.find(k=>mp[k]!=null); return {s,t:m?Math.max(now,mp[m]):null}; });
+  const next=stops.filter(s=>s.along>a+30).slice(0,6).map(s=>{ const mp=methodPreds(b,s), m=rank.find(k=>mp[k]!=null), our=ourPred(b,s), main=m?Math.max(now,mp[m]):null;
+    return {s,t:our??main,other:our!=null&&main!=null&&Math.abs(main-our)>=60000?main:null}; });
   el.innerHTML=`<div class="hd"><b>${esc(title.num)}${b.start!=null?` · departed ${hm(b.start)}`:""}</b><button class="chip icon" id="busX" aria-label="Hide">✕</button></div>
     <div class="mut">${b.stale?"no recent update":b.live?"live":"recent"} · position ${age<1?"under 1":age} min old ${delayHtml(b)}</div>
-    ${next.length?`<table>${next.map(x=>`<tr><td><span class="rtl">${esc(x.s.name)}</span>${x.s.code===MY_STOP?" ⭐":""}</td><td style="text-align:right;white-space:nowrap">${x.t?`<b>${hm(x.t)}</b> <span class="mut">${Math.max(0,Math.round((x.t-now)/60000))} min</span>`:"–"}</td></tr>`).join("")}</table>`:`<div class="mut">At the end of the line.</div>`}`;
+    ${next.length?`<table>${next.map(x=>`<tr><td><span class="rtl">${esc(x.s.name)}</span>${x.s.code===MY_STOP?" ⭐":x.s.code===TO_STOP?" 🏁":""}</td><td style="text-align:right;white-space:nowrap">${x.t?`<b>${hm(x.t)}</b> <span class="mut">${Math.max(0,Math.round((x.t-now)/60000))} min${x.other?` · op. ${hm(x.other)}`:""}</span>`:"–"}</td></tr>`).join("")}</table>`:`<div class="mut">At the end of the line.</div>`}`;
   el.hidden=false; $("busX").onclick=()=>{ CARD_OPEN=false; el.hidden=true; }; 
 }
 function focusBus(model){ // the selected bus; else the bus coming to my stop (else the leading active bus)
@@ -1290,9 +1335,10 @@ function renderStrip(model){
   const p=myStop()?myStopPredictions(model):[], myEta=p.length?p[0].t:null, my=myStop();
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
-    h+=`<b class="sd${mine?" mine":""}${past?" past":""}${nx?" next":""}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"My stop: ":"Set as my stop: "}${esc(s.name)}"></b>`;
+    const dest=s.code===TO_STOP;
+    h+=`<b class="sd${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${Math.max(0,Math.round((myEta-Date.now())/60000))}′`:"");
-    h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":""}${past?" past":""}${nx?" next":""}" style="left:${SX(i)}%"><span>${lab}</span></span>`;
+    h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}" style="left:${SX(i)}%"><span>${lab}</span></span>`;
   });
   // destination
   h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
@@ -1400,7 +1446,7 @@ $("tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)
   for(const x of $("tabs").children){x.classList.toggle("sel",x===b);x.setAttribute("aria-selected",x===b);}
   for(const p of document.querySelectorAll(".pane"))p.classList.toggle("sel",p.id==="p-"+b.dataset.t);
   if(sheetIdx===0)setSheet(1); if(b.dataset.t==="set")$("dbg").textContent=LOG.join("\n");});
-$("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r)setMyStop(r.dataset.code);});
+$("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r)tapStation(r.dataset.code);});
 (function lens(){   // tap = pick a station; press-and-hold or slide = fisheye lens (keeps the finger for the whole touch)
   const el=$("strip"); let raf=0, down=false, x0=0, y0=0, moved=false, lensOn=false, holdT=0, lastX=50;
   const draw=()=>{raf=0; renderStrip(lastModel||[]);};
@@ -1423,7 +1469,7 @@ $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r
       if(e.type==="pointerup"&&tagRef){ selectBus(tagRef); return; }
       if(e.type==="pointerup"&&stripX0){ const r=$("stripIn").getBoundingClientRect(), xp=(e.clientX-r.left)/r.width*100; let bi=-1,bd=Infinity;
         stops.forEach((st,i)=>{const d=Math.abs(SX(i)-xp); if(d<bd){bd=d;bi=i;}});
-        if(bi>=0&&bd*r.width/100<=24) setMyStop(stops[bi].code); }
+        if(bi>=0&&bd*r.width/100<=24) tapStation(stops[bi].code); }
       return; }
     lensOn=false; cancelAnimationFrame(lensAnim);
     const s0=performance.now(), k0=lensK; const shrink=now=>{ lensK=Math.max(0,k0*(1-(now-s0)/250)); ask();
@@ -1431,8 +1477,8 @@ $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r
     lensAnim=requestAnimationFrame(shrink); };
   el.addEventListener("pointerup",release); el.addEventListener("pointercancel",release);
   // screen readers / keyboard: activation arrives as a click (detail 0) or Enter on a station
-  el.addEventListener("click",e=>{ const d=e.target.closest(".sd"); if(d&&e.detail===0) setMyStop(d.dataset.code); });
-  el.addEventListener("keydown",e=>{ const d=e.target.closest(".sd"); if(d&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setMyStop(d.dataset.code);} });
+  el.addEventListener("click",e=>{ const d=e.target.closest(".sd"); if(d&&e.detail===0) tapStation(d.dataset.code); });
+  el.addEventListener("keydown",e=>{ const d=e.target.closest(".sd"); if(d&&(e.key==="Enter"||e.key===" ")){e.preventDefault();tapStation(d.dataset.code);} });
 })();
 function openPicker(on){ const el=$("pick"); el.hidden=!on; if(on){pickOpts=null; renderLineOpts(); renderRecent();} }
 $("lineChip").addEventListener("click",e=>{
