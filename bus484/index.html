@@ -228,8 +228,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v68";
-const BUILD="2026-11-25T17:08:04Z";
+const VERSION="v69";
+const BUILD="2026-11-25T17:15:56Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -982,8 +982,11 @@ function myStopPredictions(model){
 }
 
 // ---------- rendering ----------
+// drawn lighter: buses that are no use to me any more (past my getting-off stop, or past my boarding stop if I set
+// no getting-off stop). The selected bus never is.
+function goneBus(b){ if(b.ref===SEL_BUS) return false; const t=toStop(), f=myStop(), lim=t||f; return !!lim&&b.along>lim.along+30; }
 function busIcon(b,est){
-  const ms=myStop(), cls=(est?"est":b.stale?"old":b.live?"live":"")+(ms&&b.along>ms.along+30?" gone":"");
+  const cls=(est?"est":b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":"");
   const arr=!est&&b.brg!=null&&!b.stale?`<i class="arr" style="transform:rotate(${Math.round(b.brg)}deg)"></i>`:"";
   return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${cls}${SEL_BUS===b.ref?" sel":""}">${arr}${esc(title.num)}<small>${est?"est.":depLabel(b)}</small></div>`});
 }
@@ -1353,9 +1356,9 @@ function renderStrip(model){
   // destination
   h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
   // buses below the line: last fix (dot) and position now (pill)
-  const myA=my?my.along:null;
+
   for(const b of model){
-    const cls=(b.stale?"old":b.live?"live":"")+(myA!=null&&b.along>myA+30?" gone":"");
+    const cls=(b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":"");
     h+=`<i class="sfix ${cls}" style="left:${stripX(b.along)}%"></i>`;
     h+=`<span class="sbus ${cls}${fb&&fb.ref===b.ref?" focus":""}" id="sb-${esc(b.ref)}" style="left:${stripX(busNowAlong(b))}%">${esc(title.num)}${b.start!=null?`<small>${hm(b.start)}</small>`:""}</span>`;
   }
