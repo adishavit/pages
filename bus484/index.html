@@ -235,8 +235,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v80";
-const BUILD="2026-11-25T18:27:53Z";
+const VERSION="v81";
+const BUILD="2026-11-25T22:04:59Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -871,6 +871,10 @@ function oursTxt(t,ref){ return t!=null&&(ref==null||Math.abs(t-ref)>=60000)?` �
 function selAt(sb,s){ if(!sb||!s) return null; if(busNowAlong(sb)>=s.along-30) return "passed";
   let t=ourPred(sb,s); if(t==null){ const mp=methodPreds(sb,s), k=methodRank().find(m=>mp[m]!=null); if(k) t=Math.max(Date.now(),mp[k]); }
   return t==null?null:{t}; }
+// waiting time until t: "now" / "N min" / "1 h 25 min" / the clock time once it's 2 h or more away
+function waitTxt(t,short){ const m=Math.max(0,Math.round((t-Date.now())/60000));
+  if(m===0) return "now"; if(m<60) return short?m+"′":m+" min";
+  if(m<120) return short?`1h${String(m-60).padStart(2,"0")}`:(m===60?"1 h":`1 h ${m-60} min`); return hm(t); }
 function recordPredictions(model){
   for(const b of model){ if(b.stale) continue;
     for(const s of stops){ if(s.along<=b.along+30) continue; const mp=methodPreds(b,s); for(const m in mp) logPred(b.ref,s.code,m,mp[m]); } }
@@ -1167,7 +1171,7 @@ function renderBoard(model){
     const badge=x.src==="tt"?`<span class="badge b-old">scheduled</span>`:b?(b.live?`<span class="badge b-live">live</span>`:`<span class="badge b-str">recent</span>`):`<span class="badge b-str">expected</span>`;
     const away=b&&!b.stale?stopsAway(b,s):null;
     const from=[away!=null?(away===0?"arriving":`${away} stop${away===1?"":"s"} away`):"", st!=null?`${st>now?"departs":"departed"} <span class="rtl">${esc(org)}</span> ${hm(st)}`:""].filter(Boolean).join(" · ");
-    h+=`<div class="brow"><div class="bmin">${m===0?"now":`${m}<small> min</small>`}</div>
+    h+=`<div class="brow"><div class="bmin">${m===0?"now":m<60?`${m}<small> min</small>`:esc(waitTxt(x.t,true))}</div>
       <div class="binfo"><div><b>${hm(x.t)}</b> ${badge} ${b?delayHtml(b):""}${x.src!=="traffic"&&x.src!=="est"?oursTxt(ourPred(b,s),x.t):""}</div><div class="mut">${from}</div></div></div>`;
   }
   el.innerHTML=h;
@@ -1191,7 +1195,7 @@ function renderHero(model){
   $("heroStop").innerHTML=s?`My stop: <span class="rtl"><b>${esc(s.name)}</b></span>${ts?` → <span class="rtl"><b>${esc(ts.name)}</b></span>`:""}`:"👆 <b>Tap your station</b> on the line above";
   const sb=SEL_BUS&&model.find(b=>b.ref===SEL_BUS);
   if(sb&&(s||ts)){   // a bus is selected: every number is about it; "--" once it has passed
-    const bus=`<b>${esc(title.num)}${sb.start!=null?" "+hm(sb.start):""}</b>`, mins=t=>{const m=Math.max(0,Math.round((t-Date.now())/60000)); return m===0?"now":m+" min";};
+    const bus=`<b>${esc(title.num)}${sb.start!=null?" "+hm(sb.start):""}</b>`, mins=t=>waitTxt(t);
     const aF=selAt(sb,s), aT=selAt(sb,ts);
     if(s&&aF&&aF!=="passed"){
       $("heroMin").textContent=mins(aF.t);
@@ -1212,7 +1216,7 @@ function renderHero(model){
     $("heroMin").textContent="–"; $("heroTxt").innerHTML=loading?`Loading…`:`No more ${esc(title.num)} buses today.`;
     $("heroNext").innerHTML=loading?"":nextServiceText(); return; }   // (no "missed" note: nothing else to compare)
   const m=Math.max(0,Math.round((p[0].t-Date.now())/60000));
-  $("heroMin").textContent=m===0?"now":m+" min";
+  $("heroMin").textContent=waitTxt(p[0].t);
   const nb0=p[0].ref&&model.find(b=>b.ref===p[0].ref);
   $("heroTxt").innerHTML=`Next <b>${esc(title.num)}</b> at ${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}${p[0].src!=="traffic"&&p[0].src!=="est"?oursTxt(ourPred(nb0,s),p[0].t):""}`;
   const ps=passedMyStop(), g=[...ps].reverse().find(x=>!x.before), gb=ps[ps.length-1], ago=g?Math.round((Date.now()-g.t)/60000):null;
@@ -1390,7 +1394,7 @@ function renderStrip(model){
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
     const dest=s.code===TO_STOP;
     h+=`<b class="sd${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
-    const lab=esc(shortName(s.name))+(mine&&myEta?` · ${Math.max(0,Math.round((myEta-Date.now())/60000))}′`:mine&&myDash?" · --":"");
+    const lab=esc(shortName(s.name))+(mine&&myEta?` · ${waitTxt(myEta,true)}`:mine&&myDash?" · --":"");
     h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}" style="left:${SX(i)}%"><span>${lab}</span></span>`;
   });
   // destination
