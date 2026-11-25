@@ -150,9 +150,9 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 .nowln{position:relative;text-align:center;margin:6px 0;font-size:11px;color:var(--acc);font-weight:700}
 .nowln::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:2px solid var(--acc)}
 .nowln span{position:relative;background:var(--bg);padding:0 8px;text-transform:uppercase;letter-spacing:.05em}
-.sbus.gone{background:var(--bg);color:var(--mut);border:1px solid var(--old);box-shadow:none;opacity:.8}
-.sfix.gone{background:var(--old)}
-.bm.gone{background:#fff;color:#6b6f76;border-color:#9aa0a6;opacity:.85}
+.sbus.gone{opacity:.55;box-shadow:none}   /* past my stop: same colour (= data freshness), just lighter */
+.sfix.gone{opacity:.55}
+.bm.gone{opacity:.6}
 .sub{font-size:13px;margin:16px 0 4px;color:var(--mut);font-weight:600}
 /* line picker */
 #pick{position:absolute;z-index:1004;top:calc(52px + env(safe-area-inset-top));left:8px;right:8px;max-height:65vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:10px 12px 12px}
@@ -224,8 +224,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v60";
-const BUILD="2026-11-25T05:37:33Z";
+const VERSION="v61";
+const BUILD="2026-11-25T05:44:29Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
