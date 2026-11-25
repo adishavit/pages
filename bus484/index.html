@@ -228,8 +228,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v65";
-const BUILD="2026-11-25T16:45:15Z";
+const VERSION="v66";
+const BUILD="2026-11-25T16:57:17Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1312,8 +1312,10 @@ function focusBus(model){ // the selected bus; else the bus coming to my stop (e
 function renderStrip(model){
   const el=$("stripIn"); if(!el) return;
   stripLayout(); if(!stripX0){el.innerHTML="";return;}
-  const fb=focusBus(model), passedA=fb?busNowAlong(fb):-1;
-  const nextIdx=fb?stops.map((s,i)=>i).filter(i=>stops[i].along>passedA+30).slice(0,4):[];
+  const fb=focusBus(model), busA=fb?busNowAlong(fb):-1;
+  // grey out whole stretches only once the bus has cleared them: up to the last station it has passed
+  const passedA=fb?Math.max(-1,...stops.filter(s=>s.along<=busA+30).map(s=>s.along)):-1;
+  const nextIdx=fb?stops.map((s,i)=>i).filter(i=>stops[i].along>busA+30).slice(0,4):[];
   const L=(a0,a1)=>{const x0=stripX(a0),x1=stripX(a1);return {l:Math.min(x0,x1),w:Math.max(.3,Math.abs(x1-x0))};};
   let h="";
   // line: traffic colour where measured; jams striped; passed part dimmed
