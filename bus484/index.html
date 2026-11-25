@@ -235,8 +235,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v78";
-const BUILD="2026-11-25T18:16:28Z";
+const VERSION="v79";
+const BUILD="2026-11-25T18:23:28Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -436,6 +436,7 @@ if(HAVE_MAP){
     L.DomUtil.setPosition(this._icon,p); this._icon.style.zIndex=Math.round(p.y+this.options.zIndexOffset); } return this; }});
   L.control.attribution({position:"topright",prefix:false}).addTo(map);
   setMapStyle(MAP_STYLE,true);
+  map.createPane("warnPane").style.zIndex=440;    // ⚠️ jam marks: above the lines, below stations and buses
   map.createPane("stopsPane").style.zIndex=450;   // stations above the route and congestion lines, below bus markers
   stopLayer=L.layerGroup().addTo(map); hotLayer=L.layerGroup().addTo(map); trailLayer=L.layerGroup().addTo(map); estLayer=L.layerGroup().addTo(map); meLayer=L.layerGroup().addTo(map);
   const zc=()=>map.getContainer().classList.toggle("far",map.getZoom()<12); map.on("zoomend",zc); zc();
@@ -1029,7 +1030,10 @@ function renderHot(){
   for(const r of trafficRuns()){
     const tip=`${esc(runName(r))}: ${Math.round(r.speed*3.6)} km/h (planned ${Math.round(r.plan*3.6)})`;
     L.polyline(slice(r.a0,r.a1),{color:LEVEL_COLOR[r.lv],weight:5,opacity:1}).bindTooltip(tip).addTo(hotLayer);   // recolours the route line underneath
-    if(r.lv===2&&r.a1-r.a0>=200) L.marker(pointAt(r.a1),{icon:L.divIcon({className:"",iconSize:[0,0],html:'<div class="hot">⚠️</div>'})}).bindTooltip("Jam head: "+tip).addTo(hotLayer);
+    if(r.lv===2&&r.a1-r.a0>=200){   // on the jam stretch, as far from stations as possible (never on top of them)
+      let best=(r.a0+r.a1)/2, bd=-1;
+      for(let k=1;k<10;k++){ const a=r.a0+(r.a1-r.a0)*k/10, d=Math.min(...stops.map(s=>Math.abs((s.along??1e9)-a))); if(d>bd){bd=d;best=a;} }
+      L.marker(pointAt(best),{pane:"warnPane",keyboard:false,icon:L.divIcon({className:"",iconSize:[0,0],html:'<div class="hot">⚠️</div>'})}).bindTooltip("Jam: "+tip).addTo(hotLayer); }
   }
 }
 function renderMap(model){
