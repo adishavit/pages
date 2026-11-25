@@ -228,8 +228,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v63";
-const BUILD="2026-11-25T16:35:33Z";
+const VERSION="v64";
+const BUILD="2026-11-25T16:37:10Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -832,6 +832,10 @@ function methodPreds(b,s){ // every method's prediction for bus b at stop s (ms)
   if(haveTraffic()){const tt=travelTime(b.along,s.along); if(tt.probe) out.traffic=goT(b)+tt.t*1000;}   // only with real bus-speed data on the way
   if(b.sp>2) out.est=goT(b)+(s.along-b.along)/b.sp*1000;
   if(b.start!=null&&Number.isFinite(s.off)){out.tt=b.start+s.off*1000; if(b.delay!=null) out.sched=out.tt+b.delay*60000;}
+  // physical floor: a bus with a position can't reach the stop sooner than its remaining distance at 90 km/h
+  // (stops a timetable- or delay-based time from saying "now" for a bus that is still 30 km away)
+  if(!b.stale&&Number.isFinite(s.along)&&s.along>b.along){ const floor=goT(b)+(s.along-b.along)/25*1000;
+    for(const k in out) if(out[k]<floor) out[k]=floor; }
   return out;
 }
 // OUR estimate: congestion model (speeds of all buses on the way), else the bus's own recent speed
