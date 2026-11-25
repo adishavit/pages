@@ -127,6 +127,9 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 .bm.live{background:var(--live)}.bm.old{background:var(--old)}
 .bm.est{background:#fff;color:var(--str);border:2px dashed var(--str)}
 .bm .arr{position:absolute;left:50%;top:50%;width:0;height:0;margin:-30px 0 0 -7px;border:7px solid transparent;border-bottom:11px solid #111;transform-origin:7px 30px;opacity:.85}
+.stn{position:absolute;left:0;top:0;width:12px;height:12px;transform:translate(-50%,-50%);border-radius:50%;background:#fff;border:3px solid #1565c0;box-sizing:content-box;cursor:pointer}
+.stn.mine{width:18px;height:18px;background:#ffcf33;border-color:#c60}.stn.dest{width:18px;height:18px;background:#64b5f6;border-color:#0d47a1}
+.leaflet-overlay-pane path{vector-effect:non-scaling-stroke}   /* route and congestion keep their width during a pinch-zoom (where supported) */
 .stoplbl{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:11px;white-space:nowrap;direction:rtl;box-shadow:none}
 .stoplbl.mine{background:#ffcf33;color:#000;border-color:#c60;font-weight:700}
 .stoplbl.dest{background:#64b5f6;color:#000;border-color:#0d47a1;font-weight:700}
@@ -232,8 +235,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v76";
-const BUILD="2026-11-25T18:05:53Z";
+const VERSION="v77";
+const BUILD="2026-11-25T18:10:24Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -460,8 +463,9 @@ function drawStops(){
                :roadFailed?L.polyline(routePts,{color:"#1565c0",weight:2,opacity:.35}).addTo(stopLayer):null;
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, dest=s.code===TO_STOP, end=i===0||i===stops.length-1;
-    L.circleMarker([s.lat,s.lon],{pane:"stopsPane",radius:mine||dest?9:6,color:mine?"#c60":dest?"#0d47a1":"#1565c0",fillColor:mine?"#ffcf33":dest?"#64b5f6":"#fff",fillOpacity:1,weight:3})
-      .bindTooltip(esc(s.name),{permanent:true,direction:"right",className:"stoplbl"+(mine?" mine":dest?" dest":end?"":" n"),interactive:true})
+    // HTML markers (not vector circles): they keep their size while you pinch-zoom
+    L.marker([s.lat,s.lon],{pane:"stopsPane",icon:L.divIcon({className:"",iconSize:[0,0],html:`<div class="stn${mine?" mine":dest?" dest":""}"></div>`}),keyboard:false})
+      .bindTooltip(esc(s.name),{permanent:true,direction:"right",offset:[mine||dest?11:8,0],className:"stoplbl"+(mine?" mine":dest?" dest":end?"":" n"),interactive:true})
       .on("click",()=>tapStation(s.code)).addTo(stopLayer);
   });
   if(!fitted&&stops.length){fitRoute();fitted=true;}
