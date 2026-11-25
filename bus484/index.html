@@ -232,8 +232,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v70";
-const BUILD="2026-11-25T17:19:03Z";
+const VERSION="v71";
+const BUILD="2026-11-25T17:37:28Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -845,6 +845,10 @@ function methodPreds(b,s){ // every method's prediction for bus b at stop s (ms)
 // OUR estimate: congestion model (speeds of all buses on the way), else the bus's own recent speed
 function ourPred(b,s){ if(!b||b.stale) return null; const mp=methodPreds(b,s); const t=mp.traffic??mp.est; return t!=null?Math.max(Date.now(),t):null; }
 function oursTxt(t,ref){ return t!=null&&(ref==null||Math.abs(t-ref)>=60000)?` · <span title="our congestion-model estimate">ours ~<b>${hm(t)}</b></span>`:""; }
+// selected bus at stop s: {t} (our estimate, else best method), "passed", or null
+function selAt(sb,s){ if(!sb||!s) return null; if(busNowAlong(sb)>=s.along-30) return "passed";
+  let t=ourPred(sb,s); if(t==null){ const mp=methodPreds(sb,s), k=methodRank().find(m=>mp[m]!=null); if(k) t=Math.max(Date.now(),mp[k]); }
+  return t==null?null:{t}; }
 function recordPredictions(model){
   for(const b of model){ if(b.stale) continue;
     for(const s of stops){ if(s.along<=b.along+30) continue; const mp=methodPreds(b,s); for(const m in mp) logPred(b.ref,s.code,m,mp[m]); } }
@@ -1166,12 +1170,22 @@ function renderHero(model){
   const ts=toStop();
   $("heroStop").innerHTML=s?`My stop: <span class="rtl"><b>${esc(s.name)}</b></span>${ts?` → <span class="rtl"><b>${esc(ts.name)}</b></span>`:""}`:"👆 <b>Tap your station</b> on the line above";
   const sb=SEL_BUS&&model.find(b=>b.ref===SEL_BUS);
-  if(ts&&sb&&!sb.stale&&(!s||busNowAlong(sb)>s.along+30)&&busNowAlong(sb)<ts.along-30){   // on your bus: arrival at To
-    const mp=methodPreds(sb,ts), mk=methodRank().find(k=>mp[k]!=null), our=ourPred(sb,ts);
-    if(our!=null||mk){ const t=our!=null?our:Math.max(Date.now(),mp[mk]), m=Math.round((t-Date.now())/60000);
-      $("heroMin").textContent=m===0?"now":m+" min";
-      $("heroTxt").innerHTML=`Arriving at <span class="rtl"><b>${esc(ts.name)}</b></span> ~${hm(t)}`;
-      $("heroNext").innerHTML=`On the ${esc(title.num)} that departed ${sb.start!=null?hm(sb.start):"earlier"}${our!=null&&mk&&mp[mk]!=null&&Math.abs(mp[mk]-our)>=60000?` · operator ~${hm(Math.max(Date.now(),mp[mk]))}`:""}`; return; } }
+  if(sb&&(s||ts)){   // a bus is selected: every number is about it; "--" once it has passed
+    const bus=`<b>${esc(title.num)}${sb.start!=null?" "+hm(sb.start):""}</b>`, mins=t=>{const m=Math.max(0,Math.round((t-Date.now())/60000)); return m===0?"now":m+" min";};
+    const aF=selAt(sb,s), aT=selAt(sb,ts);
+    if(s&&aF&&aF!=="passed"){
+      $("heroMin").textContent=mins(aF.t);
+      $("heroTxt").innerHTML=`${bus} reaches <span class="rtl">${esc(shortName(s.name))}</span> ~${hm(aF.t)}`;
+      $("heroNext").innerHTML=aT&&aT!=="passed"?`→ <span class="rtl">${esc(shortName(ts.name))}</span> ~<b>${hm(aT.t)}</b>`:""; return; }
+    if(ts&&aT&&aT!=="passed"){
+      $("heroMin").textContent=mins(aT.t);
+      $("heroTxt").innerHTML=`${bus} arriving at <span class="rtl"><b>${esc(shortName(ts.name))}</b></span> ~${hm(aT.t)}`;
+      $("heroNext").innerHTML=""; return; }
+    if(aF==="passed"&&(!ts||aT==="passed")){
+      $("heroMin").textContent="--";
+      $("heroTxt").innerHTML=`${bus} passed <span class="rtl">${esc(shortName((ts||s).name))}</span>`;
+      $("heroNext").innerHTML=""; return; }
+  }
   if(!s){$("heroMin").textContent="–";$("heroTxt").textContent="";$("heroNext").textContent="";return;}
   const p=myStopPredictions(model);
   if(!p.length){ const loading=(refreshErr||!rides.length)&&!lastModel.length;
@@ -1349,12 +1363,13 @@ function renderStrip(model){
       if(eta!=null){ const m=Math.max(0,Math.round((eta-Date.now())/60000));
         h+=`<span class="sgap" style="left:${(stripX(Math.max(0,passedA))+SX(stops.indexOf(t)))/2}%" title="time left for this bus to reach your getting-off stop">~${m} min left</span>`; } } }
   // stations, all named (angled); my stop with its ETA
-  const p=myStop()?myStopPredictions(model):[], myEta=p.length?p[0].t:null, my=myStop();
+  const p=myStop()?myStopPredictions(model):[], my=myStop(), selB=SEL_BUS&&model.find(b=>b.ref===SEL_BUS), selF=selB?selAt(selB,my):null;
+  const myEta=selB?(selF&&selF!=="passed"?selF.t:null):(p.length?p[0].t:null), myDash=selB&&selF==="passed";
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
     const dest=s.code===TO_STOP;
     h+=`<b class="sd${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
-    const lab=esc(shortName(s.name))+(mine&&myEta?` · ${Math.max(0,Math.round((myEta-Date.now())/60000))}′`:"");
+    const lab=esc(shortName(s.name))+(mine&&myEta?` · ${Math.max(0,Math.round((myEta-Date.now())/60000))}′`:mine&&myDash?" · --":"");
     h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}" style="left:${SX(i)}%"><span>${lab}</span></span>`;
   });
   // destination
