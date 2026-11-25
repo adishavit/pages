@@ -63,6 +63,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sbus{position:absolute;top:76px;transform:translateX(-50%);background:var(--str);color:#fff;border-radius:8px;padding:0 5px;font:700 11px/14px system-ui,sans-serif;white-space:nowrap;z-index:4;transition:left 1s linear;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .sbus small{font-weight:400;margin-left:3px}
 .sbus.r2{top:92px}   /* second row when tags would overlap */
+/* pointer from each tag up to the bus's exact position on the line (line centre ~53px) */
+.sbus::after{content:"";position:absolute;left:50%;margin-left:-1px;width:2px;top:-21px;height:21px;background:inherit;opacity:.9}
+.sbus::before{content:"";position:absolute;left:50%;margin-left:-5px;width:10px;height:7px;top:-23px;background:inherit;clip-path:polygon(50% 0,100% 100%,0 100%)}
+.sbus.r2::after{top:-37px;height:37px}.sbus.r2::before{top:-39px}
 .sbus.live{background:var(--live)}.sbus.old{background:var(--old)}
 .sbus.focus{outline:2px solid #ffcf33}
 #strip.lensing .sbus{transition:none}
@@ -228,8 +232,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v69";
-const BUILD="2026-11-25T17:15:56Z";
+const VERSION="v70";
+const BUILD="2026-11-25T17:19:03Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
