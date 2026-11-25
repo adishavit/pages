@@ -235,8 +235,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v79";
-const BUILD="2026-11-25T18:23:28Z";
+const VERSION="v80";
+const BUILD="2026-11-25T18:27:53Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -429,7 +429,7 @@ if(HAVE_MAP){
     for(const id in this._layers){ const l=this._layers[id]; if(l._path&&l.options.weight) l._path.style.strokeWidth=sc===1?"":(l.options.weight/sc)+"px"; } },
     _update(){ L.SVG.prototype._update.call(this);   // redrawn at the new zoom: back to the normal width
       for(const id in this._layers){ const l=this._layers[id]; if(l._path) l._path.style.strokeWidth=""; } } });
-  map=L.map("map",{zoomControl:false,attributionControl:false,renderer:new KeepWidthSVG()}).setView([32.0,34.9],9);
+  map=L.map("map",{zoomControl:false,attributionControl:false,renderer:new KeepWidthSVG({padding:1})}).setView([32.0,34.9],9);
   // Leaflet rounds marker positions to whole pixels; slow movement then looks like x,y,x,y stair steps.
   // SmoothMarker keeps sub-pixel positions (browsers render fractional transforms smoothly).
   window.SmoothMarker=L.Marker.extend({update(){ if(this._icon&&this._map){ const p=this._map.project(this._latlng)._subtract(this._map.getPixelOrigin());   // unrounded (latLngToLayerPoint rounds)
@@ -836,6 +836,7 @@ async function fetchProbes(){
   const t0=performance.now(); buildProfile(); const ms=Math.round(performance.now()-t0);
   const cov=prof?Math.round(prof.conf.filter(c=>c>=ASM.minConf).length*prof.C/100)/10:0;
   probeState=haveTraffic()?"ok":"no data";
+  if(prof&&haveTraffic()) store("prof:"+REF,JSON.stringify({t:Date.now(),L:Math.round(routeLen()),p:{C:prof.C,n:prof.n,pace:[...prof.pace],conf:[...prof.conf],plan:[...prof.plan],tRef:prof.tRef,obs:prof.obs,veh:prof.veh,dwellPairs:prof.dwellPairs}}));
   probeInfo=`${prof?prof.obs:0} running measurements from ${prof?prof.veh:0} buses (${prof?prof.dwellPairs:0} at-stop excluded, ${zoneAlong.length} stops on route) · ${cov} km of ${(routeLen()/1000).toFixed(1)} covered · ${all.length} positions · ${fails} failed${probeDirect?" · direct (old relay)":""} · model ${ms} ms`;
   log("probes: "+probeInfo); render();
 }
@@ -1572,7 +1573,10 @@ $("btnMe").addEventListener("click",()=>{
 setSheet(0);
 (async()=>{
   if(REF===19094){useBuiltin();drawStops();renderTitle();render();refresh();}   // known line: draw at once, start polling
-  await loadLine(); setUrl(); drawStops(); render(); await loadRoad(); loadStopZones(); fetchProbes();
+  await loadLine(); setUrl(); drawStops(); render(); await loadRoad(); loadStopZones();
+  try{ const c=JSON.parse(load("prof:"+REF)||"null");   // last congestion picture, until fresh data arrives
+    if(!prof&&c&&Date.now()-c.t<15*60000&&Math.abs(c.L-routeLen())<50){ prof=c.p; log(`traffic: showing saved picture from ${hm(c.t)}`); render(); } }catch(_){}
+  fetchProbes();
   if(!okCount&&!inFlight) refresh();
   if(!rides.length&&!stops.length){$("heroTxt").textContent=`Line ${LINE} not found today. Tap the line name at the top to pick another.`;}
   checkVersion();
