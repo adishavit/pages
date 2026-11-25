@@ -67,11 +67,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sbus.focus{outline:2px solid #ffcf33}
 #strip.lensing .sbus{transition:none}
 #hero{padding:4px 16px 8px;touch-action:none}
-#heroTop{font-size:12px;color:var(--mut);display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px}
+#heroTop{font-size:12px;color:var(--mut);display:flex;flex-direction:column;align-items:flex-start;gap:2px}   /* always two lines: no layout jump when the stop changes */
+#heroStop{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #heroMain{display:flex;align-items:baseline;gap:10px;margin-top:2px}
 #heroMin{font-size:34px;font-weight:800;line-height:1}
 #heroTxt{font-size:14px;min-width:0}
-#heroNext{font-size:12px;color:var(--mut);margin-top:3px}
+#heroNext{font-size:12px;color:var(--mut);margin-top:3px;min-height:1.4em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #tabs{display:flex;border-bottom:1px solid var(--line);padding:0 8px}
 #tabs button{flex:1;background:none;border:0;padding:9px 4px;font-size:13px;color:var(--mut);border-bottom:2px solid transparent}
 #tabs button .gear{display:block;margin:-2px auto}
@@ -136,7 +137,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 /* freshness pill */
 .pill{display:inline-block;border-radius:999px;padding:0 7px;font-weight:600;font-size:11px;line-height:17px;color:#fff;background:var(--old)}
 .pill.ok{background:var(--live)}.pill.warn{background:var(--warn)}.pill.bad{background:var(--late)}
-#heroAge{white-space:nowrap;margin-left:auto}#heroAge .ver{opacity:.7}
+#heroAge{white-space:nowrap}#heroAge .ver{opacity:.7}
 /* first-run hint: stations pulse until a stop is chosen */
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(21,101,192,.55)}50%{box-shadow:0 0 0 5px rgba(21,101,192,0)}}
 #strip.pick .sd{animation:pulse 1.6s ease-in-out infinite}
@@ -156,6 +157,12 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 /* line picker */
 #pick{position:absolute;z-index:1004;top:calc(52px + env(safe-area-inset-top));left:8px;right:8px;max-height:65vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:10px 12px 12px}
 #pick[hidden]{display:none}
+#busCard{position:absolute;z-index:1004;top:calc(60px + env(safe-area-inset-top));left:8px;right:8px;max-height:45vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:8px 12px 10px;font-size:13px}
+#busCard[hidden]{display:none}
+#busCard .hd{display:flex;justify-content:space-between;align-items:center;font-size:15px}
+#busCard table{width:100%;border-collapse:collapse;margin-top:6px}#busCard td{padding:3px 0;border-top:1px solid var(--line)}
+.bm.sel{outline:3px solid #ffcf33;outline-offset:1px}
+.sbus{cursor:pointer}
 #pick .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:15px}
 #pick input{width:150px}
 </style>
@@ -173,6 +180,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
   <div id="lineOpts"></div>
   <div id="recentWrap"><h3>Recent</h3><div id="recent"></div></div>
 </div>
+<div id="busCard" hidden></div>
 <div id="upd"></div>
 <div id="toast"></div>
 <div id="sheet">
@@ -216,8 +224,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v57";
-const BUILD="2026-11-25T05:23:24Z";
+const VERSION="v58";
+const BUILD="2026-11-25T05:30:00Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -935,7 +943,7 @@ function myStopPredictions(model){
 function busIcon(b,est){
   const ms=myStop(), cls=(est?"est":b.stale?"old":b.live?"live":"")+(ms&&b.along>ms.along+30?" gone":"");
   const arr=!est&&b.brg!=null&&!b.stale?`<i class="arr" style="transform:rotate(${Math.round(b.brg)}deg)"></i>`:"";
-  return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${cls}">${arr}${esc(title.num)}<small>${est?"est.":depLabel(b)}</small></div>`});
+  return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${cls}${SEL_BUS===b.ref?" sel":""}">${arr}${esc(title.num)}<small>${est?"est.":depLabel(b)}</small></div>`});
 }
 function animate(entry,to,D=1200){
   const from=entry.m.getLatLng(); if(from.lat===to[0]&&from.lng===to[1]) return;
@@ -963,15 +971,17 @@ function renderMap(model){
     if(b.fx.length>1&&routePts.length>1){ const first=snap(b.fx[0].lat,b.fx[0].lon);
       if(first.d<200&&b.off<200&&b.along>first.along+20) L.polyline(slice(first.along,b.along),{color:b.stale?"#9aa0a6":b.live?"#2e7d32":"#d32f2f",weight:3,opacity:.55}).addTo(trailLayer); }
     let e=busMarkers.get(b.ref);
-    if(!e){e={m:new SmoothMarker([b.r.lat,b.r.lon],{icon:busIcon(b),zIndexOffset:1000}).addTo(map)};busMarkers.set(b.ref,e);}
+    if(!e){ const ref=b.ref; e={m:new SmoothMarker([b.r.lat,b.r.lon],{icon:busIcon(b),zIndexOffset:1000}).addTo(map)};busMarkers.set(b.ref,e);
+      e.m.on("click",ev=>{ L.DomEvent.stopPropagation(ev); selectBus(ref); }); }
     else{e.m.setIcon(busIcon(b)); animate(e,[b.r.lat,b.r.lon]);}
     e.m.bindTooltip(`${esc(title.num)} ${b.start!=null?hm(b.start)+" dep. · ":""}${b.live?"live":"recent"} position ${hms(tms(b.r))}`);
     // estimated-position marker: persistent, moved every second by tickEst()
     let es=estMarkers.get(b.ref);
     if(b.stale){ if(es){es.m.remove();es.line.remove();estMarkers.delete(b.ref);} }
     else{
-      if(!es){ es={m:new SmoothMarker(pointAt(b.estAlong),{icon:busIcon(b,true),opacity:0}).bindTooltip("Estimated position now").addTo(estLayer),
-                   line:L.polyline([],{color:"#d32f2f",weight:3,dashArray:"4 6"}).addTo(estLayer)}; estMarkers.set(b.ref,es); }
+      if(!es){ const ref=b.ref; es={m:new SmoothMarker(pointAt(b.estAlong),{icon:busIcon(b,true),opacity:0}).bindTooltip("Estimated position now").addTo(estLayer),
+                   line:L.polyline([],{color:"#d32f2f",weight:3,dashArray:"4 6"}).addTo(estLayer)}; estMarkers.set(b.ref,es);
+        es.m.on("click",ev=>{ L.DomEvent.stopPropagation(ev); selectBus(ref); }); }
       else es.m.setIcon(busIcon(b,true));
       Object.assign(es,{along:b.along,fixT:tms(b.r),sp:b.sp});
     }
@@ -1153,7 +1163,7 @@ function renderLineOpts(){
 let lastModel=[];
 function render(){
   const model=buildModel(); lastModel=model;
-  renderMap(model); renderCards(model); renderDiagram(model); renderDeps(model); renderBoard(model); renderHero(model); renderTitle(); renderTraffic(); renderAccuracy(); renderStrip(model); renderFresh();
+  renderMap(model); renderCards(model); renderDiagram(model); renderDeps(model); renderBoard(model); renderHero(model); renderTitle(); renderTraffic(); renderAccuracy(); renderStrip(model); renderFresh(); renderBusCard(model);
   $("strip").classList.toggle("pick",!myStop()&&stops.length>0); $("lineHint").style.display=myStop()?"none":"";
   $("probeInfo").textContent=(probeInfo||"not run yet")+(probeAt?` · last run ${hm(probeAt)}`:"");
   const st=$("status");
@@ -1213,7 +1223,24 @@ function stripXraw(a){
 const shortName=n=>String(n).split("/")[0].replace(/^ת\. ?רכבת /,"").replace(/^ת\.רק''ל /,"").replace(/^ת\. מרכזית /,"").trim();
 function busNowAlong(b){ const age=Math.max(0,(Date.now()-tms(b.r))/1000);
   return b.stale?b.along:(haveTraffic()?advance(b.along,age):Math.min(routeLen(),b.along+b.sp*age)); }
-function focusBus(model){ // the bus coming to my stop (else the leading active bus)
+// selected bus (tap a bus tag on the strip or a bus on the map); null = automatic
+let SEL_BUS=null;
+function selectBus(ref){ SEL_BUS=(ref!=null&&String(ref)!==SEL_BUS)?String(ref):null; openPicker(false);
+  const b=SEL_BUS&&lastModel.find(x=>x.ref===SEL_BUS);
+  if(b&&HAVE_MAP) map.panTo(pointAt(busNowAlong(b)),{animate:true});
+  render(); }
+function renderBusCard(model){ const el=$("busCard"); if(!el) return;
+  const b=SEL_BUS?model.find(x=>x.ref===SEL_BUS):null;
+  if(!b){ el.hidden=true; if(SEL_BUS&&model.length) SEL_BUS=null; return; }
+  const now=Date.now(), a=busNowAlong(b), age=Math.round((now-tms(b.r))/60000), rank=methodRank();
+  const next=stops.filter(s=>s.along>a+30).slice(0,6).map(s=>{ const mp=methodPreds(b,s), m=rank.find(k=>mp[k]!=null); return {s,t:m?Math.max(now,mp[m]):null}; });
+  el.innerHTML=`<div class="hd"><b>${esc(title.num)}${b.start!=null?` · departed ${hm(b.start)}`:""}</b><button class="chip icon" id="busX" aria-label="Close">✕</button></div>
+    <div class="mut">${b.stale?"no recent update":b.live?"live":"recent"} · position ${age<1?"under 1":age} min old ${delayHtml(b)}</div>
+    ${next.length?`<table>${next.map(x=>`<tr><td><span class="rtl">${esc(x.s.name)}</span>${x.s.code===MY_STOP?" ⭐":""}</td><td style="text-align:right;white-space:nowrap">${x.t?`<b>${hm(x.t)}</b> <span class="mut">${Math.max(0,Math.round((x.t-now)/60000))} min</span>`:"–"}</td></tr>`).join("")}</table>`:`<div class="mut">At the end of the line.</div>`}`;
+  el.hidden=false; $("busX").onclick=()=>selectBus(null);
+}
+function focusBus(model){ // the selected bus; else the bus coming to my stop (else the leading active bus)
+  if(SEL_BUS){ const sb=model.find(b=>b.ref===SEL_BUS); if(sb) return sb; }
   const p=myStop()?myStopPredictions(model):[]; const r=p.find(x=>x.ref&&model.some(b=>b.ref===x.ref));
   return r?model.find(b=>b.ref===r.ref):model.find(b=>!b.stale)||null;
 }
@@ -1321,7 +1348,7 @@ setInterval(()=>{ // ticking clocks + countdown
   renderFresh();
   $("ver").textContent=`${VERSION} · built ${BUILD} (${fmtAge((Date.now()-Date.parse(BUILD))/1000)} ago) · opened ${fmtAge((Date.now()-PAGE_LOADED)/1000)} ago · ok ${okCount}/fail ${failCount}${inFlight?" · fetching…":nextAt?` · next in ${Math.max(0,Math.round((nextAt-Date.now())/1000))}s`:""} · relay ${LIVE_BASE.replace(/^https?:\/\//,"")}`;
 },1000);
-setInterval(()=>{ if(!document.hidden){ const m=lastModel.length?buildModel():lastModel; renderHero(m); renderBoard(m);} },15000);
+setInterval(()=>{ if(!document.hidden){ const m=lastModel.length?buildModel():lastModel; renderHero(m); renderBoard(m); renderBusCard(m);} },15000);
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden){clearTimeout(timer);nextAt=0;log("hidden: paused");return;}
   log("visible"); checkVersion(); if(inFlight) return; const since=Date.now()-lastRun; since>15000?refresh():schedule(pollInterval()-since);
@@ -1367,14 +1394,17 @@ $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r
     lensF=at(lastX); el.classList.add("lensing");
     const s0=performance.now(), k0=lensK; const grow=now=>{ lensK=Math.min(1,k0+(now-s0)/150); ask(); if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); };
     lensAnim=requestAnimationFrame(grow); };
+  let tagRef=null;
   el.addEventListener("pointerdown",e=>{ down=true; moved=false; lensOn=false; x0=lastX=e.clientX; y0=e.clientY;
+    const tg=e.target.closest&&e.target.closest(".sbus"); tagRef=tg?tg.id.replace(/^sb-/,""):null;
     try{ el.setPointerCapture(e.pointerId); }catch(_){}
     holdT=setTimeout(startLens,180); e.preventDefault(); });
   el.addEventListener("pointermove",e=>{ if(!down) return; lastX=e.clientX;
     if(!moved&&Math.hypot(e.clientX-x0,e.clientY-y0)>6){ moved=true; startLens(); }
     if(lensOn){ lensF=at(e.clientX); ask(); } });
   const release=e=>{ if(!down) return; down=false; clearTimeout(holdT); try{ el.releasePointerCapture(e.pointerId); }catch(_){}
-    if(!lensOn){   // quick tap: choose the nearest station, no lens
+    if(!lensOn){   // quick tap: a bus tag selects that bus; elsewhere the nearest station
+      if(e.type==="pointerup"&&tagRef){ selectBus(tagRef); return; }
       if(e.type==="pointerup"&&stripX0){ const r=$("stripIn").getBoundingClientRect(), xp=(e.clientX-r.left)/r.width*100; let bi=-1,bd=Infinity;
         stops.forEach((st,i)=>{const d=Math.abs(SX(i)-xp); if(d<bd){bd=d;bi=i;}});
         if(bi>=0&&bd*r.width/100<=24) setMyStop(stops[bi].code); }
