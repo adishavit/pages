@@ -216,8 +216,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v56";
-const BUILD="2026-11-25T05:18:44Z";
+const VERSION="v57";
+const BUILD="2026-11-25T05:23:24Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -496,11 +496,15 @@ async function fetchStride(){
   catch(e){if(!/timed out/.test(e.message))throw e;return getJSON("stride-20m",q(now-20*60000,to));}
 }
 // Live: ONE stop per refresh (curlbus rate-limits); my stop every other turn, then terminus and stops spread along the route.
+// The live feed only reports buses APPROACHING the stop asked about. So: every other turn my stop; the other turns
+// the stop just ahead of each bus on the road, in rotation (fixed spread of stops until any bus is known).
 function liveStopCode(){
   const n=stops.length; if(!n) return null;
   const spread=[n-1,Math.round(n*0.65),Math.round(n*0.35)].map(i=>stops[Math.min(n-1,Math.max(0,i))].code);
-  const seq=MY_STOP?[MY_STOP,spread[0],MY_STOP,spread[1],MY_STOP,spread[2]]:spread;
-  return seq[liveTurn++%seq.length];
+  const ahead=[...new Set(lastModel.filter(b=>!b.stale&&b.off<300).map(b=>{ const a=busNowAlong(b), s=stops.find(x=>x.along>a+150); return s?s.code:null; }).filter(Boolean))];
+  const others=ahead.length?ahead:spread, turn=liveTurn++;
+  if(MY_STOP&&turn%2===0) return MY_STOP;
+  return others[Math.floor(turn/2)%others.length];
 }
 async function fetchLive(){
   if(Date.now()<liveRetryAt) return null;
@@ -523,9 +527,13 @@ async function fetchLive(){
     if(v.trip_id) vehTrip.set(vr,jnum(v.trip_id));
     if(Number.isFinite(eta)){ if(!liveEta.has(vr)) liveEta.set(vr,new Map()); liveEta.get(vr).set(String(sc),{eta,seen:Date.now()}); }
     if(!v.location){noLoc++;continue;}
+    // position time: the visit's own timestamp. Whole-hour slips (time zone) are corrected; a position that is
+    // genuinely old stays old (never re-stamped as fresh); one without a usable time is dropped (its ETA is kept).
     let ms=parseTs(v.timestamp);
-    if(!Number.isFinite(ms)||(Number.isFinite(respMs)&&(ms<respMs-10*60000||ms>respMs+60000))) ms=respMs;
-    if(!Number.isFinite(ms)) continue;
+    if(Number.isFinite(ms)&&Number.isFinite(respMs)){
+      const h=Math.round((respMs-ms)/3600e3); if(h!==0&&Math.abs(respMs-ms-h*3600e3)<10*60000) ms+=h*3600e3;
+      if(ms>respMs+60000) ms=respMs; }
+    if(!Number.isFinite(ms)){noLoc++;continue;}
     const row={id:`L:${vr}:${ms}`,live:true,recorded_at_time:new Date(ms).toISOString(),lat:+v.location.lat,lon:+v.location.lon,velocity:null,bearing:null,siri_ride__vehicle_ref:vr};
     if(!best.has(vr)||ms>tms(best.get(vr))) best.set(vr,row);
   }
