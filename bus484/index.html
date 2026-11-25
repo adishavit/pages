@@ -232,8 +232,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v73";
-const BUILD="2026-11-25T17:40:10Z";
+const VERSION="v74";
+const BUILD="2026-11-25T17:43:02Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -411,7 +411,7 @@ function tickEst(jump){
   if(!HAVE_MAP||document.hidden) return;
   for(const[,e]of estMarkers){
     const a=estAlongNow(e), show=a-e.along>50;
-    e.m.setOpacity(show?1:0); e.line.setLatLngs(show?slice(e.along,a):[]);
+    e.m.setOpacity(show?1:0);
     if(show){ const p=pointAt(a); jump?e.m.setLatLng(p):animate(e,p,1000); }   // glide 1 s per step
   }
 }
@@ -1036,17 +1036,16 @@ function renderMap(model){
     e.m.bindTooltip(`${esc(title.num)} ${b.start!=null?hm(b.start)+" dep. · ":""}${b.live?"live":"recent"} position ${hms(tms(b.r))}`);
     // estimated-position marker: persistent, moved every second by tickEst()
     let es=estMarkers.get(b.ref);
-    if(b.stale){ if(es){es.m.remove();es.line.remove();estMarkers.delete(b.ref);} }
+    if(b.stale){ if(es){es.m.remove();estMarkers.delete(b.ref);} }
     else{
-      if(!es){ const ref=b.ref; es={m:new SmoothMarker(pointAt(b.estAlong),{icon:busIcon(b,true),opacity:0}).bindTooltip("Estimated position now").addTo(estLayer),
-                   line:L.polyline([],{color:"#d32f2f",weight:3,dashArray:"4 6"}).addTo(estLayer)}; estMarkers.set(b.ref,es);
+      if(!es){ const ref=b.ref; es={m:new SmoothMarker(pointAt(b.estAlong),{icon:busIcon(b,true),opacity:0}).bindTooltip("Estimated position now").addTo(estLayer)}; estMarkers.set(b.ref,es);
         es.m.on("click",ev=>{ L.DomEvent.stopPropagation(ev); selectBus(ref); }); }
       else es.m.setIcon(busIcon(b,true));
       Object.assign(es,{along:b.along,fixT:tms(b.r),sp:b.sp,start:b.start});
     }
   }
   for(const[ref,e]of busMarkers) if(!keep.has(ref)){e.m.remove();busMarkers.delete(ref);}
-  for(const[ref,e]of estMarkers) if(!keep.has(ref)){e.m.remove();e.line.remove();estMarkers.delete(ref);}
+  for(const[ref,e]of estMarkers) if(!keep.has(ref)){e.m.remove();estMarkers.delete(ref);}
   tickEst(true);
 }
 function renderCards(model){
