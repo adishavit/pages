@@ -228,8 +228,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v66";
-const BUILD="2026-11-25T16:57:17Z";
+const VERSION="v67";
+const BUILD="2026-11-25T17:04:24Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1336,11 +1336,11 @@ function renderStrip(model){
     const gx=Math.abs(SX(i+1)-SX(i));
     if(gx>7) h+=`<span class="sarr" aria-hidden="true" style="left:${(SX(i)+SX(i+1))/2}%">${stripFlip?"◀":"▶"}</span>`;
   }
-  // ride time From -> To: our live estimate (congestion model, incl. stops), else the timetable
-  { const f=myStop(), t=toStop(), fi=stops.indexOf(f), ti=stops.indexOf(t);
-    if(f&&t&&ti>fi){ const live=haveTraffic()&&travelTime(f.along,t.along).probe;
-      const sec=live?travelTime(f.along,t.along).t:(Number.isFinite(t.off)&&Number.isFinite(f.off)?t.off-f.off:null);
-      if(sec!=null) h+=`<span class="sgap" style="left:${(SX(fi)+SX(ti))/2}%" title="${live?"our estimate":"timetable"}: ride from boarding to getting-off stop">${live?"~":""}${Math.round(sec/60)} min ride${live?"":" (sched.)"}</span>`; } }
+  // remaining travel time of the followed bus to my getting-off stop (our estimate), between the bus and that stop
+  { const t=toStop();
+    if(t&&fb&&!fb.stale&&busA<t.along-30){ const eta=ourPred(fb,t)??(()=>{const mp=methodPreds(fb,t),k=methodRank().find(m=>mp[m]!=null);return k?mp[k]:null;})();
+      if(eta!=null){ const m=Math.max(0,Math.round((eta-Date.now())/60000));
+        h+=`<span class="sgap" style="left:${(stripX(busA)+SX(stops.indexOf(t)))/2}%" title="time left for this bus to reach your getting-off stop">~${m} min left</span>`; } } }
   // stations, all named (angled); my stop with its ETA
   const p=myStop()?myStopPredictions(model):[], myEta=p.length?p[0].t:null, my=myStop();
   stops.forEach((s,i)=>{
@@ -1420,7 +1420,7 @@ setInterval(()=>{ // ticking clocks + countdown
   renderFresh();
   $("ver").textContent=`${VERSION} · built ${BUILD} (${fmtAge((Date.now()-Date.parse(BUILD))/1000)} ago) · opened ${fmtAge((Date.now()-PAGE_LOADED)/1000)} ago · ok ${okCount}/fail ${failCount}${inFlight?" · fetching…":nextAt?` · next in ${Math.max(0,Math.round((nextAt-Date.now())/1000))}s`:""} · relay ${LIVE_BASE.replace(/^https?:\/\//,"")}`;
 },1000);
-setInterval(()=>{ if(!document.hidden){ const m=lastModel.length?buildModel():lastModel; renderHero(m); renderBoard(m); renderBusCard(m);} },15000);
+setInterval(()=>{ if(!document.hidden){ const m=lastModel.length?buildModel():lastModel; renderHero(m); renderBoard(m); renderBusCard(m); if(!lensK) renderStrip(m);} },15000);
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden){clearTimeout(timer);nextAt=0;log("hidden: paused");return;}
   log("visible"); checkVersion(); if(inFlight) return; const since=Date.now()-lastRun; since>15000?refresh():schedule(pollInterval()-since);
