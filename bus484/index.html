@@ -224,8 +224,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v58";
-const BUILD="2026-11-25T05:30:00Z";
+const VERSION="v59";
+const BUILD="2026-11-25T05:33:08Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1224,20 +1224,27 @@ const shortName=n=>String(n).split("/")[0].replace(/^ת\. ?רכבת /,"").replac
 function busNowAlong(b){ const age=Math.max(0,(Date.now()-tms(b.r))/1000);
   return b.stale?b.along:(haveTraffic()?advance(b.along,age):Math.min(routeLen(),b.along+b.sp*age)); }
 // selected bus (tap a bus tag on the strip or a bus on the map); null = automatic
-let SEL_BUS=null;
-function selectBus(ref){ SEL_BUS=(ref!=null&&String(ref)!==SEL_BUS)?String(ref):null; openPicker(false);
-  const b=SEL_BUS&&lastModel.find(x=>x.ref===SEL_BUS);
+// Tapping a bus selects it and opens its panel; tapping the selected bus toggles the panel. ✕ hides the panel but
+// keeps the selection; "Unselect" goes back to automatic.
+let SEL_BUS=null, CARD_OPEN=false;
+function selectBus(ref){ openPicker(false);
+  if(ref==null){ SEL_BUS=null; CARD_OPEN=false; render(); return; }
+  ref=String(ref);
+  if(ref===SEL_BUS){ CARD_OPEN=!CARD_OPEN; render(); return; }
+  SEL_BUS=ref; CARD_OPEN=true;
+  const b=lastModel.find(x=>x.ref===SEL_BUS);
   if(b&&HAVE_MAP) map.panTo(pointAt(busNowAlong(b)),{animate:true});
   render(); }
 function renderBusCard(model){ const el=$("busCard"); if(!el) return;
   const b=SEL_BUS?model.find(x=>x.ref===SEL_BUS):null;
-  if(!b){ el.hidden=true; if(SEL_BUS&&model.length) SEL_BUS=null; return; }
+  if(!b){ el.hidden=true; if(SEL_BUS&&model.length){ SEL_BUS=null; CARD_OPEN=false; } return; }
+  if(!CARD_OPEN){ el.hidden=true; return; }
   const now=Date.now(), a=busNowAlong(b), age=Math.round((now-tms(b.r))/60000), rank=methodRank();
   const next=stops.filter(s=>s.along>a+30).slice(0,6).map(s=>{ const mp=methodPreds(b,s), m=rank.find(k=>mp[k]!=null); return {s,t:m?Math.max(now,mp[m]):null}; });
-  el.innerHTML=`<div class="hd"><b>${esc(title.num)}${b.start!=null?` · departed ${hm(b.start)}`:""}</b><button class="chip icon" id="busX" aria-label="Close">✕</button></div>
+  el.innerHTML=`<div class="hd"><b>${esc(title.num)}${b.start!=null?` · departed ${hm(b.start)}`:""}</b><span><button class="chip" id="busUn" style="font-size:12px;padding:3px 10px">Unselect</button> <button class="chip icon" id="busX" aria-label="Hide">✕</button></span></div>
     <div class="mut">${b.stale?"no recent update":b.live?"live":"recent"} · position ${age<1?"under 1":age} min old ${delayHtml(b)}</div>
     ${next.length?`<table>${next.map(x=>`<tr><td><span class="rtl">${esc(x.s.name)}</span>${x.s.code===MY_STOP?" ⭐":""}</td><td style="text-align:right;white-space:nowrap">${x.t?`<b>${hm(x.t)}</b> <span class="mut">${Math.max(0,Math.round((x.t-now)/60000))} min</span>`:"–"}</td></tr>`).join("")}</table>`:`<div class="mut">At the end of the line.</div>`}`;
-  el.hidden=false; $("busX").onclick=()=>selectBus(null);
+  el.hidden=false; $("busX").onclick=()=>{ CARD_OPEN=false; el.hidden=true; }; $("busUn").onclick=()=>selectBus(null);
 }
 function focusBus(model){ // the selected bus; else the bus coming to my stop (else the leading active bus)
   if(SEL_BUS){ const sb=model.find(b=>b.ref===SEL_BUS); if(sb) return sb; }
