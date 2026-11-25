@@ -214,8 +214,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v54";
-const BUILD="2026-11-24T22:02:45Z";
+const VERSION="v55";
+const BUILD="2026-11-25T04:37:26Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -313,6 +313,16 @@ async function loadLine(){
     REF=route.line_ref;
     rides=(await getJSON("rides",`${API}/gtfs_rides/list?gtfs_route_id=${route.id}&limit=200`)).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time));
     if(ttShift){ const sh=t=>t?new Date(Date.parse(t)+ttShift*86400000).toISOString():t; rides=rides.map(r=>({...r,start_time:sh(r.start_time),end_time:sh(r.end_time)})); }
+    // Open Bus may publish a day's trips before their times (seen 2026-11-25 06:30: all start_time null) -> use an earlier day
+    const timed=x=>x.some(r=>Number.isFinite(Date.parse(r.start_time)));
+    if(rides.length&&!timed(rides)&&!ttShift){
+      log(`today's timetable has no times yet (${rides.length} trips): using an earlier day`);
+      for(const k of fallbackDays()){ const dd=dayIL(-k);
+        const r2=(await getJSON("routes-"+dd,`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dd}&date_to=${dd}&limit=50`)).find(r=>r.line_ref===REF); if(!r2) continue;
+        const rd=await getJSON("rides-"+dd,`${API}/gtfs_rides/list?gtfs_route_id=${r2.id}&limit=200`); if(!timed(rd)) continue;
+        const sh=t=>t?new Date(Date.parse(t)+k*86400000).toISOString():t;
+        rides=rd.map(r=>({...r,start_time:sh(r.start_time),end_time:sh(r.end_time)})).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time));
+        route=r2; ttDate=dd; ttShift=k; log(`using ${dd}'s timetable, shifted ${k} day(s)`); break; } }
     log(`rides today: ${rides.length}`);
     if(!rides.length){ renderLineOpts(); return; }
     const ref=rides[Math.floor(rides.length/2)];   // a mid-day ride as the timing reference
