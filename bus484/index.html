@@ -224,8 +224,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v61";
-const BUILD="2026-11-25T05:44:29Z";
+const VERSION="v62";
+const BUILD="2026-11-25T16:03:28Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -387,7 +387,16 @@ const HAVE_MAP=typeof L!=="undefined";
 let map=null, stopLayer, hotLayer, trailLayer, estLayer, meLayer, routeLine=null, fitted=false;
 const busMarkers=new Map();   // ref -> {m, from, to, t0}
 const estMarkers=new Map();   // ref -> {m, line, along, fixT, sp}: predicted position, creeping along the road
-function estAlongNow(e){ const age=Math.max(0,(Date.now()-e.fixT)/1000);
+// Trips appear ~5 min before departure, parked at the first station: a bus still there doesn't move until it leaves.
+// Returns the time from which the bus is assumed to be moving.
+function goTime(along,fixT,start,stale){ const now=Date.now();
+  if(stale||along>=300) return fixT;
+  const s=start!=null?start:fixT;
+  if(now<s) return s;                                        // before its departure time: waits
+  return now-fixT<3*60000?now:Math.max(fixT,s);              // late but still reported there: leaves now; reports stopped: left on time
+}
+const goT=b=>goTime(b.along,tms(b.r),b.start,b.stale);
+function estAlongNow(e){ const age=Math.max(0,(Date.now()-goTime(e.along,e.fixT,e.start,false))/1000);
   return haveTraffic()?advance(e.along,age):Math.min(routeLen(),e.along+e.sp*age); }   // congestion-aware when bus speeds exist
 function tickEst(jump){
   if(!HAVE_MAP||document.hidden) return;
@@ -794,8 +803,8 @@ function logPred(ref,code,m,t){
 function methodPreds(b,s){ // every method's prediction for bus b at stop s (ms), or null
   const out={};
   const e=b.etas.find(u=>u.code===s.code); if(e) out.ETA=e.eta;
-  if(haveTraffic()){const tt=travelTime(b.along,s.along); if(tt.probe) out.traffic=tms(b.r)+tt.t*1000;}   // only with real bus-speed data on the way
-  if(b.sp>2) out.est=tms(b.r)+(s.along-b.along)/b.sp*1000;
+  if(haveTraffic()){const tt=travelTime(b.along,s.along); if(tt.probe) out.traffic=goT(b)+tt.t*1000;}   // only with real bus-speed data on the way
+  if(b.sp>2) out.est=goT(b)+(s.along-b.along)/b.sp*1000;
   if(b.start!=null&&Number.isFinite(s.off)){out.tt=b.start+s.off*1000; if(b.delay!=null) out.sched=out.tt+b.delay*60000;}
   return out;
 }
@@ -895,9 +904,9 @@ function buildModel(){
     let brg=null; const prev=[...fx].reverse().find(f=>f!==r&&dist(f.lat,f.lon,r.lat,r.lon)>30);
     if(prev){const y=Math.sin((r.lon-prev.lon)*Math.PI/180)*Math.cos(r.lat*Math.PI/180),x=Math.cos(prev.lat*Math.PI/180)*Math.sin(r.lat*Math.PI/180)-Math.sin(prev.lat*Math.PI/180)*Math.cos(r.lat*Math.PI/180)*Math.cos((r.lon-prev.lon)*Math.PI/180);brg=(Math.atan2(y,x)*180/Math.PI+360)%360;}
     else if(Number.isFinite(r.bearing)&&r.bearing>0) brg=r.bearing;
-    const ageS=Math.max(0,(now-tms(r))/1000);
-    const estAlong=stale?sn.along:(haveTraffic()?advance(sn.along,ageS):Math.min(routeLen(),sn.along+sp*ageS));   // traffic model if we have bus speeds
-    const start=startOf(ref), etas=upcomingEtas(ref).filter(u=>!Number.isFinite(u.s.along)||u.s.along>=sn.along-150);   // drop stops already passed
+    const start=startOf(ref), ageS=Math.max(0,(now-tms(r))/1000), moveS=Math.max(0,(now-goTime(sn.along,tms(r),start,stale))/1000);
+    const estAlong=stale?sn.along:(haveTraffic()?advance(sn.along,moveS):Math.min(routeLen(),sn.along+sp*moveS));   // traffic model if we have bus speeds
+    const etas=upcomingEtas(ref).filter(u=>!Number.isFinite(u.s.along)||u.s.along>=sn.along-150);   // drop stops already passed
     let delay=null, delaySrc="";
     if(start!=null){
       const e=etas[0], so=e&&Number.isFinite(e.s.off)?e.s.off:null;
@@ -983,7 +992,7 @@ function renderMap(model){
                    line:L.polyline([],{color:"#d32f2f",weight:3,dashArray:"4 6"}).addTo(estLayer)}; estMarkers.set(b.ref,es);
         es.m.on("click",ev=>{ L.DomEvent.stopPropagation(ev); selectBus(ref); }); }
       else es.m.setIcon(busIcon(b,true));
-      Object.assign(es,{along:b.along,fixT:tms(b.r),sp:b.sp});
+      Object.assign(es,{along:b.along,fixT:tms(b.r),sp:b.sp,start:b.start});
     }
   }
   for(const[ref,e]of busMarkers) if(!keep.has(ref)){e.m.remove();busMarkers.delete(ref);}
@@ -1221,7 +1230,7 @@ function stripXraw(a){
   return stripX0[stripX0.length-1];
 }
 const shortName=n=>String(n).split("/")[0].replace(/^ת\. ?רכבת /,"").replace(/^ת\.רק''ל /,"").replace(/^ת\. מרכזית /,"").trim();
-function busNowAlong(b){ const age=Math.max(0,(Date.now()-tms(b.r))/1000);
+function busNowAlong(b){ const age=Math.max(0,(Date.now()-goT(b))/1000);
   return b.stale?b.along:(haveTraffic()?advance(b.along,age):Math.min(routeLen(),b.along+b.sp*age)); }
 // selected bus (tap a bus tag on the strip or a bus on the map); null = automatic
 // Tapping a bus selects it and opens its panel; tapping the selected bus again unselects it. ✕ hides the panel but
