@@ -242,7 +242,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v84";
+const VERSION="v85";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -328,8 +328,10 @@ function fallbackDays(){ const wd=new Date(todayIL()+"T12:00:00Z").getUTCDay(); 
   if(wd===5||wd===6) return [7];
   const out=[]; for(let k=1;k<=7;k++){ const w=(wd-k+7)%7; if(w<=4) out.push(k); } return out; }
 const jnum=j=>String(j||"").split("_")[0];       // journey ref without its date suffix
+let LINE_FAIL="", lineRetry=0, lineRetryT=null;   // timetable lookup failed (Stride slow/down): retry with backoff
 async function loadLine(){
   if(REF===19094) useBuiltin();
+  LINE_FAIL="";
   const d=todayIL(); ttDate=d; ttShift=0;
   try{
     let rt=await getJSON("routes",`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${d}&date_to=${d}&limit=50`);
@@ -371,9 +373,13 @@ async function loadLine(){
         title={num:route.route_short_name||LINE,from:same?shortName(ok[0].gtfs_stop__name||c0):c0,to:same?shortName(ok[ok.length-1].gtfs_stop__name||c1):c1,city:same?c0:"",loop}; }
       log(`stops: ${stops.length} (timing from ride ${ref.id})`);
     }
-  }catch(e){ log("line lookup failed: "+e.message+(stops.length?" (using built-in stops)":"")); }
+  }catch(e){ log("line lookup failed: "+e.message+(stops.length?" (using built-in stops)":"")); LINE_FAIL=e.message; }
   renderLineOpts();
+  if(LINE_FAIL&&!rides.length) scheduleLineRetry(); else lineRetry=0;
 }
+function scheduleLineRetry(){ clearTimeout(lineRetryT);
+  const ms=Math.min(120000,15000*2**lineRetry++); log(`timetable retry in ${ms/1000}s`);
+  lineRetryT=setTimeout(async()=>{ await loadLine(); if(rides.length){ log("timetable loaded on retry"); setUrl(); drawStops(); renderTitle(); render(); loadRoad(); } else render(); },ms); }
 function dirOptions(){ // same marketing number, other direction(s)
   if(!route) return [];
   return routeOpts.filter(r=>r.line_ref!==REF&&r.route_mkt===route.route_mkt&&r.agency_name===route.agency_name);
@@ -1187,6 +1193,7 @@ function renderBoard(model){
   h+=`<div class="nowln"><span>now ${hm(now)}</span></div>`;
   if(here) h+=`<div class="brow"><div class="bmin">●</div><div class="binfo"><div><b>At your stop now</b> <span class="badge b-live">live</span></div><div class="mut">seen ${hm(tms(here.r))}</div></div></div>`;
   if(!p.length){const ns=nextServiceText();
+    if(LINE_FAIL&&!rides.length){ el.innerHTML=h+`<div class="card">Timetable server not responding. Retrying…</div>`; return; }
     el.innerHTML=h+`<div class="card">No more ${esc(title.num)} buses today at <span class="rtl">${esc(s.name)}</span>.${ns?`<br>${ns}`:""}</div>`;return;}
   for(const x of p){
     const b=x.ref?bym.get(x.ref):null, m=Math.max(0,Math.round((x.t-now)/60000));
@@ -1236,7 +1243,7 @@ function renderHero(model){
   if(!s){$("heroMin").textContent="–";$("heroTxt").textContent="";$("heroNext").textContent="";return;}
   const p=myStopPredictions(model);
   if(!p.length){ const loading=(refreshErr||!rides.length)&&!lastModel.length;
-    $("heroMin").textContent="–"; $("heroTxt").innerHTML=loading?`Loading…`:`No more ${esc(title.num)} buses today.`;
+    $("heroMin").textContent="–"; $("heroTxt").innerHTML=LINE_FAIL&&!rides.length?`Timetable server not responding. Retrying…`:loading?`Loading…`:`No more ${esc(title.num)} buses today.`;
     $("heroNext").innerHTML=loading?"":nextServiceText(); return; }   // (no "missed" note: nothing else to compare)
   const m=Math.max(0,Math.round((p[0].t-Date.now())/60000));
   $("heroMin").textContent=waitTxt(p[0].t);
@@ -1615,7 +1622,7 @@ setSheet(1);
     if(!prof&&c&&Date.now()-c.t<15*60000&&Math.abs(c.L-routeLen())<50){ prof=c.p; log(`traffic: showing saved picture from ${hm(c.t)}`); render(); } }catch(_){}
   fetchProbes();
   if(!okCount&&!inFlight) refresh();
-  if(!rides.length&&!stops.length){$("heroTxt").textContent=`Line ${LINE} not found today. Tap the line name at the top to pick another.`;}
+  if(!rides.length&&!stops.length&&!LINE_FAIL){$("heroTxt").textContent=`Line ${LINE} not found today. Tap the line name at the top to pick another.`;}
   checkVersion();
 })();
 </script>
