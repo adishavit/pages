@@ -235,8 +235,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v81";
-const BUILD="2026-11-25T22:04:59Z";
+const VERSION="v82";
+const BUILD="2026-11-26T18:02:14Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1505,8 +1505,10 @@ $("tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)
   for(const p of document.querySelectorAll(".pane"))p.classList.toggle("sel",p.id==="p-"+b.dataset.t);
   if(sheetIdx===0)setSheet(1); if(b.dataset.t==="set")$("dbg").textContent=LOG.join("\n");});
 $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r)tapStation(r.dataset.code);});
-(function lens(){   // tap = pick a station; press-and-hold or slide = fisheye lens (keeps the finger for the whole touch)
-  const el=$("strip"); let raf=0, down=false, x0=0, y0=0, moved=false, lensOn=false, holdT=0, lastX=50;
+(function lens(){   // tap = pick a station; press-and-hold or slide = fisheye lens (keeps the finger for the whole touch).
+  // On release the lens stays open ("parked") so a second tap can pick a station among the spread-out ones; a new slide
+  // moves it again; a tap on empty strip, picking a station, or 5 s without touching closes it.
+  const el=$("strip"); let raf=0, down=false, x0=0, y0=0, moved=false, lensOn=false, holdT=0, lastX=50, parked=false, parkT=0;
   const draw=()=>{raf=0; renderStrip(lastModel||[]);};
   const ask=()=>{ if(!raf) raf=requestAnimationFrame(draw); };
   const at=x=>{const r=$("stripIn").getBoundingClientRect(); return Math.max(0,Math.min(100,(x-r.left)/r.width*100));};
@@ -1514,8 +1516,12 @@ $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r
     lensF=at(lastX); el.classList.add("lensing");
     const s0=performance.now(), k0=lensK; const grow=now=>{ lensK=Math.min(1,k0+(now-s0)/150); ask(); if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); };
     lensAnim=requestAnimationFrame(grow); };
+  const closeLens=()=>{ parked=false; clearTimeout(parkT); lensOn=false; cancelAnimationFrame(lensAnim);
+    const s0=performance.now(), k0=lensK; const shrink=now=>{ lensK=Math.max(0,k0*(1-(now-s0)/250)); ask();
+      if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); };
+    lensAnim=requestAnimationFrame(shrink); };
   let tagRef=null;
-  el.addEventListener("pointerdown",e=>{ down=true; moved=false; lensOn=false; x0=lastX=e.clientX; y0=e.clientY;
+  el.addEventListener("pointerdown",e=>{ clearTimeout(parkT); down=true; moved=false; lensOn=false; x0=lastX=e.clientX; y0=e.clientY;
     const tg=e.target.closest&&e.target.closest(".sbus"); tagRef=tg?tg.id.replace(/^sb-/,""):null;
     try{ el.setPointerCapture(e.pointerId); }catch(_){}
     holdT=setTimeout(startLens,180); e.preventDefault(); });
@@ -1523,16 +1529,17 @@ $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r
     if(!moved&&Math.hypot(e.clientX-x0,e.clientY-y0)>6){ moved=true; startLens(); }
     if(lensOn){ lensF=at(e.clientX); ask(); } });
   const release=e=>{ if(!down) return; down=false; clearTimeout(holdT); try{ el.releasePointerCapture(e.pointerId); }catch(_){}
-    if(!lensOn){   // quick tap: a bus tag selects that bus; elsewhere the nearest station
-      if(e.type==="pointerup"&&tagRef){ selectBus(tagRef); return; }
+    if(!lensOn){   // quick tap: a bus tag selects that bus; elsewhere the nearest station (in the lens if it's open)
+      const wasParked=parked;
+      if(e.type==="pointerup"&&tagRef){ selectBus(tagRef); if(wasParked) closeLens(); return; }
+      let hit=false;
       if(e.type==="pointerup"&&stripX0){ const r=$("stripIn").getBoundingClientRect(), xp=(e.clientX-r.left)/r.width*100; let bi=-1,bd=Infinity;
         stops.forEach((st,i)=>{const d=Math.abs(SX(i)-xp); if(d<bd){bd=d;bi=i;}});
-        if(bi>=0&&bd*r.width/100<=24) tapStation(stops[bi].code); }
+        if(bi>=0&&bd*r.width/100<=24){ hit=true; tapStation(stops[bi].code); } }
+      if(wasParked) closeLens();          // picked a station, or tapped empty strip: close
       return; }
-    lensOn=false; cancelAnimationFrame(lensAnim);
-    const s0=performance.now(), k0=lensK; const shrink=now=>{ lensK=Math.max(0,k0*(1-(now-s0)/250)); ask();
-      if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); };
-    lensAnim=requestAnimationFrame(shrink); };
+    lensOn=false; parked=true; cancelAnimationFrame(lensAnim);   // keep it open for a second tap
+    clearTimeout(parkT); parkT=setTimeout(closeLens,5000); };
   el.addEventListener("pointerup",release); el.addEventListener("pointercancel",release);
   // screen readers / keyboard: activation arrives as a click (detail 0) or Enter on a station
   el.addEventListener("click",e=>{ const d=e.target.closest(".sd"); if(d&&e.detail===0) tapStation(d.dataset.code); });
