@@ -258,7 +258,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v90";
+const VERSION="v91";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -418,7 +418,7 @@ async function loadTwins(){
   }catch(e){ log("twin check failed: "+e.message); } }
   if(!add.length) return;
   const seen=new Set(rides.map(x=>x.id)); rides=rides.concat(add.filter(x=>!seen.has(x.id))).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time));
-  tomorrow=null; renderTitle(); render(); if(!inFlight) refresh();
+  tomorrow=null; refresh.backfill=false; renderTitle(); render(); if(!inFlight) refresh();   // backfill again: now for every route
 }
 function scheduleLineRetry(){ clearTimeout(lineRetryT);
   const ms=Math.min(120000,15000*2**lineRetry++); log(`timetable retry in ${ms/1000}s`);
@@ -1237,7 +1237,7 @@ function renderBoard(model){
   const el=$("board"); if(!el) return;
   if(!stops.length){el.innerHTML="";return;}
   const s=myStop();
-  if(!s){el.innerHTML=`<div class="card hint">👆 <b>Tap your station</b> on the line above (or in the Line tab) to see when the next buses get there.</div>`;return;}
+  if(!s){el.innerHTML=`<div class="card hint">👆 <b>Tap your station</b> on the line above (or under All stops) to see when the next buses get there.</div>`;return;}
   const now=Date.now(), bym=new Map(model.map(b=>[b.ref,b])), org=shortName(stops[0].name);
   const here=atMyStop(model), all=myStopPredictions(model).filter(x=>!here||x.ref!==here.ref), gone=passedMyStop();
   const skip=!SEL_BUS&&all.length?1:0;   // the hero already shows the next one
