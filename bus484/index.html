@@ -258,7 +258,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v88";
+const VERSION="v89";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -495,6 +495,14 @@ function snap(lat,lon){let best={along:0,d:Infinity};const kx=Math.cos(lat*Math.
   for(let i=1;i<routePts.length;i++){const[ay,ax]=routePts[i-1],[by,bx]=routePts[i];const ux=(bx-ax)*kx,uy=(by-ay)*ky,px=(lon-ax)*kx,py=(lat-ay)*ky,L2=ux*ux+uy*uy;
     const t=L2?Math.max(0,Math.min(1,(px*ux+py*uy)/L2)):0,d=Math.hypot(px-t*ux,py-t*uy);if(d<best.d)best={d,along:routeCum[i-1]+t*(routeCum[i]-routeCum[i-1])};}
   return best;}
+// nearest point on the road at or after `from` (m); among near-equal matches (within 30 m) the earliest wins
+function snapAfter(lat,lon,from){ const kx=Math.cos(lat*Math.PI/180)*111320,ky=110540, c=[];
+  for(let i=1;i<routePts.length;i++){ if(routeCum[i]<from) continue; const[ay,ax]=routePts[i-1],[by,bx]=routePts[i];
+    const ux=(bx-ax)*kx,uy=(by-ay)*ky,px=(lon-ax)*kx,py=(lat-ay)*ky,L2=ux*ux+uy*uy;
+    const t=L2?Math.max(0,Math.min(1,(px*ux+py*uy)/L2)):0, al=Math.max(from,routeCum[i-1]+t*(routeCum[i]-routeCum[i-1]));
+    c.push({d:Math.hypot(px-t*ux,py-t*uy),along:al}); }
+  if(!c.length) return {along:from,d:Infinity};
+  const dmin=Math.min(...c.map(x=>x.d)); return c.filter(x=>x.d<=dmin+30).reduce((m,x)=>x.along<m.along?x:m); }
 function pointAt(a){a=Math.max(0,Math.min(a,routeCum[routeCum.length-1]||0));let i=1;while(i<routeCum.length-1&&routeCum[i]<a)i++;
   if(routePts.length<2) return routePts[0]||[0,0];
   const seg=routeCum[i]-routeCum[i-1],t=seg?(a-routeCum[i-1])/seg:0,A=routePts[i-1],B=routePts[i];return[A[0]+(B[0]-A[0])*t,A[1]+(B[1]-A[1])*t];}
@@ -502,8 +510,10 @@ function slice(a,b){const o=[pointAt(a)];for(let i=0;i<routeCum.length;i++)if(ro
 const routeLen=()=>routeCum[routeCum.length-1]||0;
 function layoutRoute(){
   setRoute(road||stops.map(s=>[s.lat,s.lon]));
-  for(const s of stops) s.along=snap(s.lat,s.lon).along;
-  for(let i=1;i<stops.length;i++) if(stops[i].along<stops[i-1].along) stops[i].along=stops[i-1].along;   // keep monotone
+  // stations in order: each one on the road after the previous one. A plain nearest-point snap fails where the road
+  // passes the same place twice (loop lines: start and end are next to each other), and then many stations collapse
+  // onto one point and the planned speeds become absurd (every segment showed as a jam).
+  let prev=0; for(const s of stops){ s.along=snapAfter(s.lat,s.lon,prev).along; prev=s.along; }
   buildSections();
 }
 function drawStops(){
