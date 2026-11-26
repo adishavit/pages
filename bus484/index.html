@@ -258,7 +258,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v89";
+const VERSION="v90";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -392,13 +392,40 @@ async function loadLine(){
   }catch(e){ log("line lookup failed: "+e.message+(stops.length?" (using built-in stops)":"")); LINE_FAIL=e.message; }
   renderLineOpts();
   if(LINE_FAIL&&!rides.length) scheduleLineRetry(); else lineRetry=0;
+  if(rides.length) loadTwins();
+}
+// "Twins": the same line entered as several routes that differ only by hours (seen on 863: "direction" 1 runs
+// 06:00–10:45, "direction" 2 11:00–22:45, same stops in the same order). They are one line: their timetables are joined
+// and live positions are fetched for each. Candidates must have the same end stops in the name; confirmed by the stops.
+let TWINS=[];
+const lineRefs=()=>[REF,...TWINS.map(t=>t.line_ref)];
+async function loadTwins(){
+  TWINS=[]; if(!route) return;
+  const me=parseRouteName(route), codes=stops.map(s=>s.code).join(",");
+  const cand=routeOpts.filter(r=>r.line_ref!==REF&&r.route_mkt===route.route_mkt&&r.agency_name===route.agency_name&&
+    (n=>n.fromStop===me.fromStop&&n.toStop===me.toStop)(parseRouteName(r)));
+  if(!cand.length) return;
+  const add=[];
+  for(const r of cand){ try{
+    const rd=(await getJSON("rides-twin",`${API}/gtfs_rides/list?gtfs_route_id=${r.id}&limit=200`)).filter(x=>Number.isFinite(Date.parse(x.start_time)));
+    if(!rd.length) continue;
+    const rs=(await getJSON("stops-twin",`${API}/gtfs_ride_stops/list?gtfs_ride_ids=${rd[Math.floor(rd.length/2)].id}&limit=200`))
+      .filter(x=>Number.isFinite(x.gtfs_stop__lat)&&Number.isFinite(x.gtfs_stop__lon)).sort((a,b)=>a.stop_sequence-b.stop_sequence);
+    if(rs.map(x=>String(x.gtfs_stop__code)).join(",")!==codes){ log(`route ${r.line_ref}: same ends, different stops: kept apart`); continue; }
+    const sh=t=>t&&ttShift?new Date(Date.parse(t)+ttShift*86400000).toISOString():t;
+    TWINS.push(r); add.push(...rd.map(x=>({...x,start_time:sh(x.start_time),end_time:sh(x.end_time)})));
+    log(`route ${r.line_ref} (dir ${r.route_direction}) has the same stops: joined, +${rd.length} trips`);
+  }catch(e){ log("twin check failed: "+e.message); } }
+  if(!add.length) return;
+  const seen=new Set(rides.map(x=>x.id)); rides=rides.concat(add.filter(x=>!seen.has(x.id))).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time));
+  tomorrow=null; renderTitle(); render(); if(!inFlight) refresh();
 }
 function scheduleLineRetry(){ clearTimeout(lineRetryT);
   const ms=Math.min(120000,15000*2**lineRetry++); log(`timetable retry in ${ms/1000}s`);
   lineRetryT=setTimeout(async()=>{ await loadLine(); if(rides.length){ log("timetable loaded on retry"); setUrl(); drawStops(); renderTitle(); render(); loadRoad(); } else render(); },ms); }
 function dirOptions(){ // same marketing number, other direction(s)
   if(!route) return [];
-  return routeOpts.filter(r=>r.line_ref!==REF&&r.route_mkt===route.route_mkt&&r.agency_name===route.agency_name);
+  const refs=lineRefs(); return routeOpts.filter(r=>!refs.includes(r.line_ref)&&r.route_mkt===route.route_mkt&&r.agency_name===route.agency_name);
 }
 // route_long_name: "<stop>-<city><-><stop>-<city>-<suffix>" (suffix like 10, 2#, 1ב, 30). Stop names may contain "-".
 function parseRouteName(r){ const p=String(r.route_long_name||"").split("<->");
@@ -557,8 +584,9 @@ async function loadTomorrow(){
   const d=new Date(Date.now()+86400000).toLocaleDateString("sv",{timeZone:TZ});
   try{
     const rt=await getJSON("routes-tomorrow",`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${d}&date_to=${d}&limit=50`);
-    const r=rt.find(x=>x.line_ref===REF); if(!r){tomorrow={none:true};render();return;}
-    const rs=(await getJSON("rides-tomorrow",`${API}/gtfs_rides/list?gtfs_route_id=${r.id}&limit=200`)).map(x=>Date.parse(x.start_time)).filter(Number.isFinite).sort((a,b)=>a-b);
+    const refs=lineRefs(), rr=rt.filter(x=>refs.includes(x.line_ref)); if(!rr.length){tomorrow={none:true};render();return;}
+    const rs=[]; for(const r of rr) rs.push(...(await getJSON("rides-tomorrow",`${API}/gtfs_rides/list?gtfs_route_id=${r.id}&limit=200`)).map(x=>Date.parse(x.start_time)).filter(Number.isFinite));
+    rs.sort((a,b)=>a-b);
     tomorrow=rs.length?{first:rs[0],rides:rs}:{none:true};
   }catch(e){ log("tomorrow lookup failed: "+e.message); tomorrow=null; }
   render();
@@ -609,12 +637,16 @@ let newestMs=null, strideNewestMs=null;
 let liveState="untried", liveRetryAt=0, liveTurn=0, liveFails=0;
 let refreshErr="", inFlight=false, timer=null, lastRun=0, nextAt=0, okCount=0, failCount=0;
 
-function q(from,to){return `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${REF}&recorded_at_time_from=${encodeURIComponent(new Date(from).toISOString())}&recorded_at_time_to=${encodeURIComponent(new Date(to).toISOString())}&limit=${LIMIT}`;}
+function q(from,to,ref=REF){return `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${ref}&recorded_at_time_from=${encodeURIComponent(new Date(from).toISOString())}&recorded_at_time_to=${encodeURIComponent(new Date(to).toISOString())}&limit=${LIMIT}`;}
+// Stride filters by one route id: a line made of several routes (TWINS) needs one query each
+async function strideGet(label,from,to){ const refs=lineRefs(); if(refs.length===1) return getJSON(label,q(from,to));
+  const r=await Promise.allSettled(refs.map((x,i)=>getJSON(label+(i?"/"+x:""),q(from,to,x))));
+  if(r.every(z=>z.status==="rejected")) throw r[0].reason; return r.flatMap(z=>z.status==="fulfilled"?z.value:[]); }
 async function fetchStride(){
   const now=Date.now(),to=now+5*60000;
-  if(strideNewestMs) return getJSON("stride+",q(Math.max(strideNewestMs-60000,now-FIRST_WINDOW_MIN*60000),to));
-  try{return await getJSON("stride-30m",q(now-FIRST_WINDOW_MIN*60000,to));}
-  catch(e){if(!/timed out/.test(e.message))throw e;return getJSON("stride-20m",q(now-20*60000,to));}
+  if(strideNewestMs) return strideGet("stride+",Math.max(strideNewestMs-60000,now-FIRST_WINDOW_MIN*60000),to);
+  try{return await strideGet("stride-30m",now-FIRST_WINDOW_MIN*60000,to);}
+  catch(e){if(!/timed out/.test(e.message))throw e;return strideGet("stride-20m",now-20*60000,to);}
 }
 // Live: ONE stop per refresh (curlbus rate-limits); my stop every other turn, then terminus and stops spread along the route.
 // The live feed only reports buses APPROACHING the stop asked about. So: every other turn my stop; the other turns
@@ -643,7 +675,7 @@ async function fetchLive(){
   const respMs=parseTs(d&&d.timestamp), best=new Map(); let total=0,noLoc=0;
   for(const sc in (d&&d.visits)||{}) for(const v of d.visits[sc]||[]){
     total++;
-    if(String(v.line_id)!==String(REF)) continue;
+    if(!lineRefs().some(x=>String(x)===String(v.line_id))) continue;
     const vr=String(v.vehicle_ref??("trip:"+v.trip_id)), eta=parseTs(v.eta);
     if(v.trip_id) vehTrip.set(vr,jnum(v.trip_id));
     if(Number.isFinite(eta)){ if(!liveEta.has(vr)) liveEta.set(vr,new Map()); liveEta.get(vr).set(String(sc),{eta,seen:Date.now()}); }
@@ -1344,11 +1376,11 @@ function render(){
 // Loop lines (start and end < 300 m apart) are drawn as a racetrack: outbound on the top bar up to the turnaround (the
 // station farthest from the start), back on the bottom bar; the turnaround leg is the rounded end.
 let stripX0=null, stripFlip=false, stripU=null, stripRow=null, LOOPK=-1, stripLo=3, stripHi=97;
-const LOOP_M=8;
+const LOOP_M=8, LOOP_MIN_STOPS=20;   // short loops read fine as a straight strip
 function stripLayout(){
   if(stops.length<2){stripX0=null;return;}
   LOOPK=-1;
-  if(title.loop&&stops.length>=6){ let k=-1,bd=0; stops.forEach((st,i)=>{const d=dist(stops[0].lat,stops[0].lon,st.lat,st.lon); if(d>bd){bd=d;k=i;}});
+  if(title.loop&&stops.length>=LOOP_MIN_STOPS){ let k=-1,bd=0; stops.forEach((st,i)=>{const d=dist(stops[0].lat,stops[0].lon,st.lat,st.lon); if(d>bd){bd=d;k=i;}});
     if(k>=2&&k<=stops.length-3) LOOPK=k; }
   stripFlip=LOOPK>=0?stops[LOOPK].lon<stops[0].lon:stops[stops.length-1].lon<stops[0].lon;   // like the map: west on the left
   const w=[];
@@ -1623,7 +1655,7 @@ async function refresh(){
     if(rows.length>=LIMIT) log(`WARNING: hit limit ${LIMIT}`);
     const added=merge(rows); okCount++;
     if(!refresh.backfill&&sr.status==="fulfilled"){ refresh.backfill=true; const t0=Date.now();   // older positions, once, in the background
-      getJSON("stride-history",q(t0-HISTORY_MIN*60000,t0-FIRST_WINDOW_MIN*60000+60000))
+      strideGet("stride-history",t0-HISTORY_MIN*60000,t0-FIRST_WINDOW_MIN*60000+60000)
         .then(r=>{ const n=merge(r); log(`history: ${r.length} rows, ${n} new`); render(); })
         .catch(e=>{ log("history fetch failed: "+e.message); refresh.backfill=false; }); }
     try{ if(added&&probeAt&&probeState!=="disabled") buildProfile(); }catch(e){ log("profile failed: "+e.message); }
