@@ -70,23 +70,28 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sbus.live{background:var(--live)}.sbus.old{background:var(--old)}
 .sbus.focus{outline:2px solid #ffcf33}
 #strip.lensing .sbus{transition:none}
-/* racetrack (loop lines): top bar at 52 px, bottom bar at 146 px; tags of each bar between the bars, names outside */
-#strip.loop{height:216px}
-.sarc{position:absolute;top:49.5px;height:99px;width:18px;box-sizing:border-box;border:5px solid var(--acc);border-left-width:0;border-radius:0 60px 60px 0}
-.sarc.m{transform:translateX(-100%);border-left-width:5px;border-right-width:0;border-radius:60px 0 0 60px}
-.sarc.past{border-color:var(--old)!important;opacity:.35!important;border-width:3px;border-left-width:0}.sarc.m.past{border-left-width:3px;border-right-width:0}
-.sarc.close{border-style:dashed;border-color:var(--old);opacity:.4;border-width:2px;border-left-width:0}.sarc.close.m{border-left-width:2px;border-right-width:0}
-.sl.lo,.sd.lo,.sfix.lo{top:146px}
-.slab.lo{top:154px}
+/* racetrack (loop lines): a thin track, top bar at 112 px, bottom bar at 132 px; bus tags outside each bar (pointing at
+   it), station names beyond the tags; direction arrows and "~N min left" inside the track */
+#strip.loop{height:240px}
+#strip.loop .sl,#strip.loop .sd,#strip.loop .sfix{top:112px}
+#strip.loop .sl.lo,#strip.loop .sd.lo,#strip.loop .sfix.lo{top:132px}
+.sarc{position:absolute;top:109.5px;height:25px;width:14px;box-sizing:border-box;border:5px solid var(--acc);border-left-width:0;border-radius:0 20px 20px 0}
+.sarc.m{transform:translateX(-100%);border-left-width:5px;border-right-width:0;border-radius:20px 0 0 20px}
+.sarc.past{border-color:var(--old)!important;opacity:.35!important}
+.sarc.close{border-style:dashed;border-color:var(--old);opacity:.4;border-width:2px;border-left-width:0;top:111px;height:22px}.sarc.close.m{border-left-width:2px;border-right-width:0}
+#strip.loop .slab{top:62px}
+#strip.loop .slab.lo{top:182px}
 .slab.lo>span{bottom:auto;top:0;transform-origin:0 0;transform:rotate(40deg)}
 .slab.lo.r>span{left:auto;right:0;transform-origin:100% 0;transform:rotate(-40deg)}
-.sarr.lo{top:140px}
-#strip.loop .sgap{top:56px}#strip.loop .sgap.lo{top:130px}
-#strip.loop .sbus{top:70px}#strip.loop .sbus::after{top:-15px;height:15px}#strip.loop .sbus::before{top:-17px}
-#strip.loop .sbus.r2{top:84px}#strip.loop .sbus.r2::after{top:-29px;height:29px}#strip.loop .sbus.r2::before{top:-31px}
-#strip.loop .sbus.lo{top:114px}#strip.loop .sbus.lo::after{top:14px;height:18px}
-#strip.loop .sbus.lo::before{top:25px;clip-path:polygon(0 0,100% 0,50% 100%)}
-#strip.loop .sbus.lo.r2{top:99px}#strip.loop .sbus.lo.r2::after{top:14px;height:33px}#strip.loop .sbus.lo.r2::before{top:40px}
+#strip.loop .sarr{top:115px;font-size:8px;line-height:10px}
+#strip.loop .sgap{top:115px;font-size:10px;line-height:11px;padding:0 2px}
+#strip.loop .sbus{top:84px}#strip.loop .sbus::after{top:14px;height:14px}
+#strip.loop .sbus::before{top:21px;clip-path:polygon(0 0,100% 0,50% 100%)}
+#strip.loop .sbus.r2{top:68px}#strip.loop .sbus.r2::after{height:30px}#strip.loop .sbus.r2::before{top:37px}
+#strip.loop .sbus.lo{top:146px}#strip.loop .sbus.lo::after{top:-14px;height:14px}
+#strip.loop .sbus.lo::before{top:-16px;clip-path:polygon(50% 0,100% 100%,0 100%)}
+#strip.loop .sbus.lo.r2{top:162px}#strip.loop .sbus.lo.r2::after{top:-30px;height:30px}#strip.loop .sbus.lo.r2::before{top:-32px}
+#sheet.peek #strip.loop #stripIn{transform:translateY(-107px)}
 #hero{padding:4px 16px 8px;touch-action:none}
 #heroTop{font-size:12px;color:var(--mut);display:flex;flex-direction:column;align-items:flex-start;gap:2px}   /* always two lines: no layout jump when the stop changes */
 #heroStop{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -108,7 +113,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 /* Peek: just the countdown line and a slim strip, to give the map the screen */
 #sheet.peek #strip{height:30px;overflow:hidden}
 #sheet.peek #stripIn{transform:translateY(-37px)}
-#sheet.peek #heroTop,#sheet.peek #heroNext,#sheet.peek #panes,#sheet.peek .slab,#sheet.peek .sdest,#sheet.peek .sgap,#sheet.peek .sbus,#sheet.peek .sarc{display:none}
+#sheet.peek #heroTop,#sheet.peek #heroNext,#sheet.peek #panes,#sheet.peek .slab,#sheet.peek .sdest,#sheet.peek .sgap,#sheet.peek .sbus{display:none}
 #sheet.peek .sfix{transform:scale(1.6)}
 #sheet.peek #heroMin{font-size:24px}
 #sheet.peek #hero{padding-bottom:4px}
@@ -259,7 +264,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v86";
+const VERSION="v87";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1368,11 +1373,24 @@ function foldU(u){
 // Lens: while a finger is on the strip, a 1-D fisheye (Sarkar & Brown) spreads stations near the finger
 // and compresses the rest; order is preserved and it relaxes smoothly on release.
 let lensF=50, lensK=0, lensAnim=0;
-function lensX(x){
+function lensX(x){ return lensGen(x,stripLo,stripHi); }
+// racetrack: the lens works along the track (path coordinate: along the top bar, then back along the bottom bar),
+// so near the bend it spreads both bars' stations around the bend; each item stays on its own bar
+function loopX(x,row,onBend){
+  if(lensK<=0||onBend) return x;
+  // each bar is lensed on its own with the bend pinned (bars stay joined); the bar not touched gets a lens at the bend
+  // whose strength fades as the finger moves away from it, so near the bend both sides spread
+  const M=LOOP_M, B=100-M, E=200-2*M, xu=stripFlip?100-x:x, P=row?E-xu:xu, F=Math.max(M,Math.min(E-M,lensF));
+  const g=(n,m)=>((m+1)*n)/(m*n+1), fish=(P,lo,hi,f,k)=>{ const m=3*k; if(k<=0) return P;
+    return P>=f?f+(hi>f?g((P-f)/(hi-f),m)*(hi-f):0):f-(f>lo?g((f-P)/(f-lo),m)*(f-lo):0); };
+  const w=Math.max(0,1-Math.abs(F-B)/30);
+  const Q=P<=B?(F<=B?fish(P,M,B,F,lensK):fish(P,M,B,B,lensK*w)):(F>=B?fish(P,B,E-M,F,lensK):fish(P,B,E-M,B,lensK*w));
+  const xr=Math.max(M,Math.min(B,row?E-Q:Q)); return stripFlip?100-xr:xr; }
+function lensGen(x,lo,hi){
   if(lensK<=0||!stripX0) return x;
   // the lens works between the end stations, which stay pinned; its centre is kept a little inside them and,
   // near an end, slides inward so the stations next to a pinned end get room to spread
-  const lo=stripLo, hi=stripHi, span=hi-lo;
+  const span=hi-lo;
   if(span<=0) return x;
   const m=3*lensK, fish=n=>((m+1)*n)/(m*n+1);
   const f=Math.max(lo+0.08*span,Math.min(hi-0.08*span,lensF));
@@ -1381,9 +1399,10 @@ function lensX(x){
   if(x>=f) return fp+fish((x-f)/(hi-f))*(hi-fp);
   return fp-fish((f-x)/(f-lo))*(fp-lo);
 }
-const SX=i=>lensX(stripX0[i]);       // station position on screen (%), lens applied
-function stripX(a){ return lensX(stripXraw(a)); }
-function stripPos(a){ if(LOOPK<0||!stripU) return {x:stripX(a),row:0}; const f=foldU(stripUraw(a)); return {x:lensX(f.x),row:f.row}; }
+const SX=i=>LOOPK>=0&&stripRow?loopX(stripX0[i],stripRow[i],false):lensX(stripX0[i]);       // station position on screen (%), lens applied
+function stripX(a){ return LOOPK>=0&&stripU?stripPos(a).x:lensX(stripXraw(a)); }
+function stripPos(a){ if(LOOPK<0||!stripU) return {x:lensX(stripXraw(a)),row:0};
+  const u=stripUraw(a), f=foldU(u); return {x:loopX(f.x,f.row,u>stripU[LOOPK]&&u<stripU[LOOPK+1]),row:f.row}; }
 function stripUraw(a){   // loop lines: along-route metres -> unfolded coordinate
   if(a<=stops[0].along) return 0;
   for(let i=0;i<stops.length-1;i++){const A=stops[i].along,B=stops[i+1].along;
@@ -1463,7 +1482,7 @@ function renderStrip(model){
         h+=`<i class="sl${q.lv===2?" jam":q.lv===1?" slow":""}${q.past?" past":""}${LO(rowSeg)}" style="left:${g.l}%;width:${g.w}%;background:${bg};${q.lv==null&&!q.past?"opacity:.5;":""}"></i>`; }
     }
     const gx=Math.abs(SX(i+1)-SX(i));
-    if(gx>7) h+=`<span class="sarr${LO(rowSeg)}" aria-hidden="true" style="left:${(SX(i)+SX(i+1))/2}%">${(stripFlip!==(rowSeg===1))?"◀":"▶"}</span>`;
+    if(gx>7&&!rowSeg) h+=`<span class="sarr${LO(rowSeg)}" aria-hidden="true" style="left:${(SX(i)+SX(i+1))/2}%">${(stripFlip!==(rowSeg===1))?"◀":"▶"}</span>`;
   }
   // remaining travel time of the followed bus to my getting-off stop (our estimate), between the bus and that stop
   { const t=toStop();
@@ -1601,9 +1620,11 @@ $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r
   const el=$("strip"); let raf=0, down=false, x0=0, y0=0, moved=false, lensOn=false, holdT=0, lastX=50, parked=false, parkT=0;
   const draw=()=>{raf=0; renderStrip(lastModel||[]);};
   const ask=()=>{ if(!raf) raf=requestAnimationFrame(draw); };
-  const at=x=>{const r=$("stripIn").getBoundingClientRect(); return Math.max(0,Math.min(100,(x-r.left)/r.width*100));};
+  let lastY=0;
+  const at=(x,y)=>{const r=$("stripIn").getBoundingClientRect(), p=Math.max(0,Math.min(100,(x-r.left)/r.width*100));
+    if(!(LOOPK>=0)) return p; const xu=stripFlip?100-p:p; return (y-r.top)>122?200-2*LOOP_M-xu:xu; };
   const startLens=()=>{ if(lensOn||!down) return; lensOn=true; clearTimeout(holdT); cancelAnimationFrame(lensAnim);
-    lensF=at(lastX); el.classList.add("lensing");
+    lensF=at(lastX,lastY); el.classList.add("lensing");
     const s0=performance.now(), k0=lensK; const grow=now=>{ lensK=Math.min(1,k0+(now-s0)/150); ask(); if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); };
     lensAnim=requestAnimationFrame(grow); };
   const closeLens=()=>{ parked=false; clearTimeout(parkT); lensOn=false; cancelAnimationFrame(lensAnim);
@@ -1611,20 +1632,20 @@ $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r
       if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); };
     lensAnim=requestAnimationFrame(shrink); };
   let tagRef=null;
-  el.addEventListener("pointerdown",e=>{ clearTimeout(parkT); down=true; moved=false; lensOn=false; x0=lastX=e.clientX; y0=e.clientY;
+  el.addEventListener("pointerdown",e=>{ clearTimeout(parkT); down=true; moved=false; lensOn=false; x0=lastX=e.clientX; y0=lastY=e.clientY;
     const tg=e.target.closest&&e.target.closest(".sbus"); tagRef=tg?tg.id.replace(/^sb-/,""):null;
     try{ el.setPointerCapture(e.pointerId); }catch(_){}
     holdT=setTimeout(startLens,180); e.preventDefault(); });
-  el.addEventListener("pointermove",e=>{ if(!down) return; lastX=e.clientX;
+  el.addEventListener("pointermove",e=>{ if(!down) return; lastX=e.clientX; lastY=e.clientY;
     if(!moved&&Math.hypot(e.clientX-x0,e.clientY-y0)>6){ moved=true; startLens(); }
-    if(lensOn){ lensF=at(e.clientX); ask(); } });
+    if(lensOn){ lensF=at(e.clientX,e.clientY); ask(); } });
   const release=e=>{ if(!down) return; down=false; clearTimeout(holdT); try{ el.releasePointerCapture(e.pointerId); }catch(_){}
     if(!lensOn){   // quick tap: a bus tag selects that bus; elsewhere the nearest station (in the lens if it's open)
       const wasParked=parked;
       if(e.type==="pointerup"&&tagRef){ selectBus(tagRef); if(wasParked) closeLens(); return; }
       let hit=false;
       if(e.type==="pointerup"&&stripX0){ const r=$("stripIn").getBoundingClientRect(), xp=(e.clientX-r.left)/r.width*100; let bi=-1,bd=Infinity;
-        const fr=LOOPK>=0&&stripRow?(e.clientY-r.top>99?1:0):null;   // racetrack: the bar nearer the finger (bars at 52 / 146 px)
+        const fr=LOOPK>=0&&stripRow?(e.clientY-r.top>122?1:0):null;   // racetrack: the bar nearer the finger (bars at 112 / 132 px)
         stops.forEach((st,i)=>{ if(fr!=null&&stripRow[i]!==fr) return; const d=Math.abs(SX(i)-xp); if(d<bd){bd=d;bi=i;}});
         if(bi>=0&&bd*r.width/100<=24){ hit=true; tapStation(stops[bi].code); } }
       if(wasParked) closeLens();          // picked a station, or tapped empty strip: close
