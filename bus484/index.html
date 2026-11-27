@@ -280,7 +280,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v137"; window.__appStarted=true;
+const VERSION="v138"; window.__appStarted=true;
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -2021,9 +2021,13 @@ function setSheet(i){ sheetIdx=Math.max(0,Math.min(3,i)); $("sheet").classList.t
   // snap heights are measured once per drag: the Glance height depends on the layout, which changes when the panel
   // switches to Peek, so measuring during the drag made the strip jump back and forth (flicker)
   let snaps=null;
-  const down=e=>{y0=e.clientY;h0=sh.getBoundingClientRect().height;moved=false;snaps=SNAP();sh.classList.add("drag");e.target.setPointerCapture&&e.target.setPointerCapture(e.pointerId);};
+  const down=e=>{y0=e.clientY;h0=sh.getBoundingClientRect().height;moved=false;
+    { const pk=sh.classList.contains("peek"); if(pk) sh.classList.remove("peek"); snaps=SNAP(); if(pk) sh.classList.add("peek"); }   // measured in the normal layout
+    sh.classList.add("drag");e.target.setPointerCapture&&e.target.setPointerCapture(e.pointerId);};
   const move=e=>{if(y0==null)return;const dy=y0-e.clientY;if(Math.abs(dy)>4)moved=true;
-    const nh=Math.max(90,Math.min(vh()-60,h0+dy)); $("sheet").classList.toggle("peek",nh<=snaps[0]+4); document.documentElement.style.setProperty("--h",nh+"px");};   // minimal layout only once the Peek height is actually reached
+    const nh=Math.max(90,Math.min(vh()-60,h0+dy)); const pk=$("sheet").classList.contains("peek");
+    // switch layouts only at the ends: minimal once dragged down to its height, normal only once there's room for it
+    if(!pk&&nh<=snaps[0]+4) $("sheet").classList.add("peek"); else if(pk&&nh>=snaps[1]-4) $("sheet").classList.remove("peek"); document.documentElement.style.setProperty("--h",nh+"px");};   // minimal layout only once the Peek height is actually reached
   const up=e=>{if(y0==null)return;sh.classList.remove("drag");const h=sh.getBoundingClientRect().height,s=snaps||SNAP();
     if(!moved){setSheet((sheetIdx+1)%3);}else{let bi=0;s.forEach((v,i)=>{if(Math.abs(v-h)<Math.abs(s[bi]-h))bi=i;});setSheet(bi);}y0=null;};   // tap cycles Peek → Glance → Half
   for(const id of ["grab","hero"]){const el=$(id);el.addEventListener("pointerdown",down);el.addEventListener("pointermove",move);el.addEventListener("pointerup",up);el.addEventListener("pointercancel",up);}
