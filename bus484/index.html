@@ -282,7 +282,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v151"; window.__appStarted=true;
+const VERSION="v152"; window.__appStarted=true;
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1112,7 +1112,8 @@ const predLog=new Map(), passed=new Set();
 setInterval(()=>{ const cutH=Math.round((Date.now()-3*3600e3)/1800000), cut=Date.now()-3*3600e3;
   for(const k of passed){ if(+k.split("|").pop()<cutH) passed.delete(k); }
   for(const [k,a] of predLog){ if(!a.length||a[a.length-1].at<cut) predLog.delete(k); }
-  for(const m of [rideStart,vehTrip,liveEta]) for(const k of m.keys()) if(!vehicles.has(k)) m.delete(k); },600000);
+  for(const m of [rideStart,vehTrip]) for(const k of m.keys()) if(!vehicles.has(k)) m.delete(k);
+  for(const [k,m] of liveEta){ for(const [c,e] of m) if(e.seen<cut) m.delete(c); if(!m.size) liveEta.delete(k); } },600000);   // live ETAs: by age (a bus may be known only from them)
 function logPred(ref,code,m,t){
   if(!Number.isFinite(t)) return;
   const k=ref+"|"+code, now=Date.now(); if(!predLog.has(k)) predLog.set(k,[]);
