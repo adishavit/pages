@@ -21,4 +21,5 @@ const dom=new JSDOM(html,{url:"http://videocortex.io/pages/bus484/",runScripts:"
 const w=dom.window,t=id=>(w.document.getElementById(id)||{textContent:"(removed)"}).textContent.replace(/\s+/g," ").trim();
 setTimeout(()=>{console.log("STATUS:",t("status")); console.log("HERO:",t("heroStop"),"|",t("heroMin"),"|",t("heroTxt"),"|",t("heroNext"));
  console.log("BUSES:",t("buses")); console.log("expected tomorrow at Karliback:",new Date(tmrFirst+446000).toLocaleTimeString("he-IL",{timeZone:"Asia/Jerusalem",hour:"2-digit",minute:"2-digit"}));
- console.log("strip buses:",w.document.querySelectorAll(".sbus").length,"| errors:",w.eval("LOG").filter(l=>/JS error|Unhandled/.test(l))); process.exit(0);},2000);
+ const want=new Date(tmrFirst+446000).toLocaleTimeString("he-IL",{timeZone:"Asia/Jerusalem",hour:"2-digit",minute:"2-digit"}), FAIL=t("heroTxt").includes(want)?[]:["hero does not show tomorrow's first bus "+want];
+ console.log("strip buses:",w.document.querySelectorAll(".sbus").length); console.log("ERRORS:",JSON.stringify(w.eval("LOG").filter(l=>/JS error|Unhandled/.test(l)).concat(FAIL))); process.exit(0);},2000);

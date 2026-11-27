@@ -33,7 +33,7 @@ const dom=new JSDOM(html,{url:"http://videocortex.io/pages/bus484/",runScripts:"
     return ok([]);};
 }});
 const w=dom.window,d=w.document,txt=id=>d.getElementById(id).textContent.replace(/\s+/g," ").trim();
-(async()=>{await new Promise(r=>setTimeout(r,3000));
+const FAIL=[]; (async()=>{await new Promise(r=>setTimeout(r,3000));
  const d=w.document, el=d.getElementById("strip"); d.getElementById("stripIn").getBoundingClientRect=()=>({left:16,top:0,width:343,height:84,right:359,bottom:84});
  const ev=(t,x,y=40)=>el.dispatchEvent(new w.MouseEvent(t,{clientX:x,clientY:y,bubbles:true,cancelable:true}));
  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -43,6 +43,6 @@ const w=dom.window,d=w.document,txt=id=>d.getElementById(id).textContent.replace
  ev("pointerup",-50,-30); await sleep(400); console.log("released -> lensK",w.eval("lensK"),"| my stop unchanged:",w.eval("MY_STOP"));
  // tap on the 8th station
  const x8=16+343*w.eval("SX(7)")/100; ev("pointerdown",x8+3); await sleep(80); ev("pointerup",x8+3); await sleep(50);
- console.log("tap near station 8 -> my stop",w.eval("MY_STOP"),"(expect",w.eval("stops[7].code")+")");
+ const c8=w.eval("stops[7].code"), tapOk=[w.eval("MY_STOP"),w.eval("TO_STOP")].includes(c8); if(!tapOk) FAIL.push("tap on station 8 did not select it"); console.log("tap near station 8 -> from",w.eval("MY_STOP"),"to",w.eval("TO_STOP"),"(expect",c8,"in one)",tapOk?"OK":"FAIL");
  ev("pointerdown",x8); ev("pointermove",x8+60); ev("pointerup",x8+60); await sleep(50); console.log("slide is not a tap -> still",w.eval("MY_STOP"));
- console.log("ERRORS:",w.eval("LOG").filter(l=>/JS error|Unhandled/.test(l)));process.exit(0);})();
+ console.log("ERRORS:",JSON.stringify(w.eval("LOG").filter(l=>/JS error|Unhandled/.test(l)).concat(FAIL)));process.exit(0);})();

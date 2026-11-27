@@ -289,20 +289,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v156"; window.__appStarted=true;
-// The site now has HTTPS. http and https keep separate saved data, so an http visit moves this browser's saved stops,
-// recent lines and settings to https in the address (#mig=...) and continues there; https takes them in (never
-// overwriting) and cleans the address.
-(function(){ try{
-  const KEEP=/^(mystop:|tostop:|acc:|recentLines$|alignFacing$|mapstyle2$)/;
-  if(location.protocol==="http:"&&location.hostname==="videocortex.io"){
-    const o={}; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(KEEP.test(k)) o[k]=localStorage.getItem(k); }
-    location.replace("https://"+location.host+location.pathname+location.search+(Object.keys(o).length?"#mig="+encodeURIComponent(JSON.stringify(o)):"")); }
-  else if(location.hash.startsWith("#mig=")){ const o=JSON.parse(decodeURIComponent(location.hash.slice(5)));
-    for(const k in o) if(KEEP.test(k)&&localStorage.getItem(k)==null) localStorage.setItem(k,o[k]);
-    history.replaceState(null,"",location.pathname+location.search); }
-}catch(_){} })();
-const BUILD="2026-11-26T18:08:49Z";
+const VERSION="v157"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -339,7 +326,7 @@ let LIVE_BASE=RELAY_DEFAULT;
   else if(st) store("relay484",null);                      // drop a stored relay that is not allowed
   if(q&&!relayOk(q)) setTimeout(()=>log("ignored ?relay= (not an allowed relay host)"),0); }
 const REFRESH_MS=60000, IDLE_REFRESH_MS=180000, TIMEOUT_MS=30000, LIMIT=500, FIRST_WINDOW_MIN=30, KEEP_MIN=30, HISTORY_MIN=90, STALE_MIN=5;   // KEEP: shown on map/cards; HISTORY: kept for "passed my stop" (hourly lines run late)
-log(`start ${VERSION} build=${BUILD} line=${LINE} ref=${REF} stop=${MY_STOP} relay=${LIVE_BASE}`);
+log(`start ${VERSION} line=${LINE} ref=${REF} stop=${MY_STOP} relay=${LIVE_BASE}`);
 log(`UA: ${navigator.userAgent} | origin=${location.origin} | secure=${window.isSecureContext}`);
 function setUrl(){const p=new URLSearchParams(location.search);if(typeof MAP_STYLE!=="undefined"&&MAP_STYLE!=="voyager")p.set("map",MAP_STYLE);else p.delete("map");p.set("line",LINE);if(REF)p.set("ref",REF);if(MY_STOP)p.set("stop",MY_STOP);else p.delete("stop");if(TO_STOP)p.set("to",TO_STOP);else p.delete("to");p.delete("relay");p.delete("v");
   try{history.replaceState(null,"",location.pathname+"?"+p.toString());}catch(_){}}
@@ -463,7 +450,7 @@ async function loadTwins(){
   const cand=routeOpts.filter(r=>r.line_ref!==REF&&r.route_mkt===route.route_mkt&&r.agency_name===route.agency_name&&
     (n=>n.fromStop===me.fromStop&&n.toStop===me.toStop)(parseRouteName(r)));
   if(!cand.length) return;
-  const add=[];
+  const add=[], g=DIR_GEN;
   for(const r of cand){ try{
     const rd=(await getJSON("rides-twin",`${API}/gtfs_rides/list?gtfs_route_id=${r.id}&limit=200`)).filter(x=>Number.isFinite(Date.parse(x.start_time)));
     if(!rd.length) continue;
@@ -474,7 +461,7 @@ async function loadTwins(){
     TWINS.push(r); add.push(...rd.map(x=>({...x,start_time:sh(x.start_time),end_time:sh(x.end_time)})));
     log(`route ${r.line_ref} (dir ${r.route_direction}) has the same stops: joined, +${rd.length} trips`);
   }catch(e){ log("twin check failed: "+e.message); } }
-  if(!add.length) return;
+  if(!add.length||genStale(g)) return;
   const seen=new Set(rides.map(x=>x.id)); rides=rides.concat(add.filter(x=>!seen.has(x.id))).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time));
   tomorrow=null; refresh.backfill=false; renderTitle(); render(); if(!inFlight) refresh();   // backfill again: now for every route
 }
@@ -499,15 +486,18 @@ function prettyRoute(r){ const n=parseRouteName(r);
 // Switch direction in place, no page reload (that blanked the screen): fetch the other direction's timetable and road
 // first, then swap the scene in one go. The map stays where it is.
 let switching=false;
+// DIR_GEN changes on every in-place direction switch; an async load remembers it at the start and drops its
+// result if it changed meanwhile (else a fetch still running for the old direction lands on the new one)
+let DIR_GEN=0; const genStale=g=>g!==DIR_GEN;
 async function switchDirInPlace(ref){
   if(switching) return; switching=true;
   try{
-    const prevRef=REF; REF=+ref;
+    const prevRef=REF; REF=+ref; DIR_GEN++; probeBusy=false; loadTracedRoad.busy=false;
     await loadLine();
     if(!stops.length){ REF=prevRef; throw new Error("no timetable"); }
     MY_STOP=load("mystop:"+LINE+":"+REF)||""; TO_STOP=load("tostop:"+LINE+":"+REF)||""; SEL_BUS=null; CARD_OPEN=false;
     for(const m of [vehicles,rideStart,vehTrip,liveEta]) m.clear(); newestMs=null; strideNewestMs=null; liveTurn=0; liveRetryAt=0;
-    predLog.clear(); passed.clear(); tomorrow=null; lastModel=[]; refresh.backfill=false;
+    predLog.clear(); passed.clear(); tomorrow=null; lastModel=[]; refresh.backfill=false; loadAcc();
     prof=null; sectionSig=""; probeRows=[]; probeAt=0; zoneStops=[]; zoneAlong=[];
     road=null; roadFailed=false;
     await loadRoad();                       // cached road: instant; else fetched (drawStops runs inside)
@@ -720,7 +710,7 @@ async function loadTracedRoad(){
   if(stops.length<2||!road||roadFailed) return;
   const key="road3:"+REF+":"+stops.map(s=>s.code).join(",");
   const c=load(key); if(c){ try{ const o=JSON.parse(c); if(Date.now()-o.t<7*864e5){ if(loadTracedRoad.done!==key){ road=o.p; loadTracedRoad.done=key; log(`road: traced (cache, ${o.cov}/${stops.length-1} stretches)`); drawStops(); render(); } return; } }catch(_){} }
-  if(loadTracedRoad.busy) return; loadTracedRoad.busy=true;
+  if(loadTracedRoad.busy) return; loadTracedRoad.busy=true; const g=DIR_GEN;
   try{
     const now=Date.now(), rr=await getJSON("trace-rides",`${API}/siri_rides/list?siri_route__line_refs=${REF}&scheduled_start_time_from=${new Date(now-8*864e5).toISOString()}&scheduled_start_time_to=${new Date(now-3*3600e3).toISOString()}&limit=12&order_by=scheduled_start_time%20desc`);
     let best=null, bestCov=-1;
@@ -728,7 +718,8 @@ async function loadTracedRoad(){
       const cov=stops.filter(s=>pos.some(p=>dist(p.lat,p.lon,s.lat,s.lon)<250)).length; if(cov>bestCov){ bestCov=cov; best=pos; } }
     if(!best||best.length<8) throw new Error("no recorded trip");
     const shape=best.map(p=>({lat:p.lat,lon:p.lon,time:Math.round(Date.parse(p.recorded_at_time)/1000)}));
-    const res=await fetch(VALHALLA+"/trace_route",{method:"POST",body:JSON.stringify({shape,costing:"bus",shape_match:"map_snap",trace_options:{search_radius:60}})});
+    if(genStale(g)) return;
+    const res=await fetch(VALHALLA+"/trace_route",{method:"POST",signal:AbortSignal.timeout?AbortSignal.timeout(30000):undefined,body:JSON.stringify({shape,costing:"bus",shape_match:"map_snap",trace_options:{search_radius:60}})});
     const j=await res.json(); if(!j.trip) throw new Error("map matching: "+(j.error||res.status));
     const T=j.trip.legs.flatMap(l=>dec6(l.shape)), TC=polyCum(T), O=road, OC=polyCum(O);
     const out=[]; let ta=0, oa=0, cov=0; const tp=[], op=[];
@@ -738,21 +729,24 @@ async function loadTracedRoad(){
       const seg=useT?polySlice(T,TC,tp[i].a,tp[i+1].a):polySlice(O,OC,op[i].a,op[i+1].a); if(useT) cov++;
       out.push(...(out.length?seg.slice(1):seg)); }
     if(cov===0) throw new Error("recorded trip doesn't match the stops");
+    if(genStale(g)) return;
     road=out; store(key,JSON.stringify({t:Date.now(),p:out,cov})); loadTracedRoad.done=key;
     log(`road: traced from a recorded trip (${best.length} positions), ${cov}/${stops.length-1} stretches; router for the rest`); drawStops(); render();
   }catch(e){ log("traced road not available: "+e.message); }
-  finally{ loadTracedRoad.busy=false; } }
+  finally{ if(!genStale(g)) loadTracedRoad.busy=false; } }
 async function loadRoad(){
   if(stops.length<2) return;
   // cached by line + station codes (stable), so the timetable's slightly different coordinates don't cause a re-fetch
   const key="road2:"+REF+":"+stops.map(s=>s.code).join(","), oldKey="road:"+stops.map(s=>(+s.lat).toFixed(4)+","+(+s.lon).toFixed(4)).join(";");
   if(road&&loadRoad.forKey===key){ loadTracedRoad(); return; }
   const c=load(key)||load(oldKey); if(c){try{road=JSON.parse(c);loadRoad.forKey=key;store(key,c);log(`road: ${road.length} pts (cache)`);drawStops();render();loadTracedRoad();return;}catch(_){}}
+  const g=DIR_GEN;
   try{
     const coords=stops.map(s=>(+s.lon).toFixed(6)+","+(+s.lat).toFixed(6)).join(";");
     let d;
     try{ d=await getJSON("road(relay)",`${LIVE_BASE}/osrm/${coords}`,TIMEOUT_MS,false); }   // relay caches shapes 24 h
     catch(e){ log("road via relay failed, trying OSRM directly"); d=await getJSON("road",`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,TIMEOUT_MS,false); }
+    if(genStale(g)) return;
     if(d.code!=="Ok") throw new Error("OSRM "+d.code);
     road=d.routes[0].geometry.coordinates.map(([x,y])=>[y,x]); store(key,JSON.stringify(road)); loadRoad.forKey=key; roadFailed=false;
     log(`road: ${road.length} pts, ${(d.routes[0].distance/1000).toFixed(1)} km`); drawStops(); render(); loadTracedRoad();
@@ -769,17 +763,17 @@ async function routesAhead(k){
   return {rt,shift:7*86400000}; }
 let tomorrow=null;   // {first: ms of first departure, rides:[ms...]} or {none:true}
 async function loadTomorrow(){
-  if(tomorrow||!REF) return; tomorrow={loading:true};
+  if(tomorrow||!REF) return; tomorrow={loading:true}; const g=DIR_GEN;
   try{
     // the next day with service: tomorrow, or up to 3 days ahead (Friday evening -> Saturday night / Sunday)
     for(let k=1;k<=3;k++){ const {rt,shift}=await routesAhead(k);
       const refs=lineRefs(), rr=rt.filter(x=>refs.includes(x.line_ref)); if(!rr.length) continue;
       const rs=[]; for(const r of rr) rs.push(...(await getJSON("rides+"+k,`${API}/gtfs_rides/list?gtfs_route_id=${r.id}&limit=200`)).map(x=>Date.parse(x.start_time)+shift).filter(Number.isFinite));
-      rs.sort((a,b)=>a-b);
+      rs.sort((a,b)=>a-b); if(genStale(g)) return;
       if(rs.length){ tomorrow={first:rs[0],rides:rs,k,day:new Date(Date.now()+k*86400000).toLocaleDateString("en-GB",{weekday:"short",timeZone:TZ})}; break; } }
     if(tomorrow.loading) tomorrow={none:true};
-  }catch(e){ log("tomorrow lookup failed: "+e.message); tomorrow=null; }
-  render();
+  }catch(e){ if(genStale(g)) return; log("tomorrow lookup failed: "+e.message); tomorrow=null; }
+  if(genStale(g)) return; render();
 }
 function nextServiceText(){
   if(!tomorrow||tomorrow.loading) { loadTomorrow(); return ""; }
@@ -956,8 +950,9 @@ const intermediateStops=()=>stops.slice(1,-1);
 let zoneStops=[], zoneAlong=[];
 async function loadStopZones(){
   const cities=[...new Set(stops.map(s=>s.city).filter(Boolean))]; if(!cities.length) return;
-  const d=ttDate||todayIL(), all=[];
+  const d=ttDate||todayIL(), all=[], g=DIR_GEN;
   for(const c of cities){ try{ all.push(...await getJSON("stops-"+c,`${API}/gtfs_stops/list?date_from=${d}&date_to=${d}&city=${encodeURIComponent(c)}&limit=5000`,30000)); }catch(e){ log("stop zones: "+e.message); } }
+  if(genStale(g)) return;
   zoneStops=all.filter(s=>Number.isFinite(s.lat)&&Number.isFinite(s.lon)).map(s=>({lat:s.lat,lon:s.lon}));
   computeZones(); log(`stop zones: ${zoneAlong.length} stops on the route (from ${all.length} in ${cities.length} cities)`);
   if(probeAt&&probeState!=="disabled"){ buildProfile(); render(); }
@@ -1091,7 +1086,7 @@ function runName(r){ // plain words: "near X" when the jam's head is close to a 
 }
 async function fetchProbes(){
   if(probeBusy||!sections.length||probeState==="disabled") return;
-  probeBusy=true; probeAt=Date.now();
+  probeBusy=true; probeAt=Date.now(); const g=DIR_GEN;
   const B=Math.floor(Date.now()/PROBE_MS)*PROBE_MS;     // same window for every viewer -> shared relay cache
   const iso=ms=>new Date(ms).toISOString().slice(0,16)+":00Z";
   const from=iso(B-15*60000), to=iso(B+PROBE_MS);
@@ -1108,6 +1103,7 @@ async function fetchProbes(){
   };
   const q=[...sections];
   await Promise.all([0,1,2].map(async()=>{while(q.length) await one(q.shift());}));
+  if(genStale(g)) return;   // the switch already started probes for the new direction
   probeBusy=false;
   if(all.length>50&&outside/all.length>0.2){
     probeState="disabled"; probeRows=[]; prof=null;
@@ -1124,8 +1120,8 @@ async function fetchProbes(){
 
 // ---------- prediction accuracy (learned on this device) ----------
 const METHODS={ETA:"Ministry ETA",traffic:"Bus-traffic model",est:"Linear estimate",sched:"Timetable + delay",tt:"Timetable"};
-const ACC_KEY="acc:"+REF;
-let acc={}; try{acc=JSON.parse(load(ACC_KEY))||{};}catch(_){acc={};}
+const accKey=()=>"acc:"+REF;   // per direction (REF changes on an in-place direction switch)
+let acc={}; function loadAcc(){ try{acc=JSON.parse(load(accKey()))||{};}catch(_){acc={};} } loadAcc();
 const predLog=new Map(), passed=new Set();
 // a phone may keep the page open all day: forget bookkeeping older than 3 hours (every 10 minutes)
 setInterval(()=>{ const cutH=Math.round((Date.now()-3*3600e3)/1800000), cut=Date.now()-3*3600e3;
@@ -1181,7 +1177,7 @@ function detectPasses(){
         if(passed.has(key)) continue; passed.add(key); n+=scorePass(ref,s,tp); }
     }
   }
-  if(n){ store(ACC_KEY,JSON.stringify(acc)); log(`accuracy: scored ${n} predictions`); }
+  if(n){ store(accKey(),JSON.stringify(acc)); log(`accuracy: scored ${n} predictions`); }
 }
 function scorePass(ref,s,tp){
   const a=predLog.get(ref+"|"+s.code)||[]; let n=0;
@@ -1965,13 +1961,15 @@ function pollInterval(){
 function schedule(ms){clearTimeout(timer);nextAt=Date.now()+ms;timer=setTimeout(refresh,ms);}
 async function refresh(){
   if(inFlight){log("refresh skipped (running)");return;}
-  inFlight=true;clearTimeout(timer);nextAt=0;lastRun=Date.now();
+  inFlight=true;clearTimeout(timer);nextAt=0;lastRun=Date.now(); const g=DIR_GEN;
   try{
     const sp=fetchStride(), lp=fetchLive();
     const [lr]=await Promise.allSettled([lp]);
+    if(genStale(g)) return;
     const live=lr.status==="fulfilled"&&lr.value?lr.value:[];
     if(live.length||liveEta.size){ merge(live); render(); }          // show live buses without waiting for the slower source
     const [sr]=await Promise.allSettled([sp]);
+    if(genStale(g)) return;
     if(sr.status==="rejected"&&!live.length&&!liveEta.size) throw sr.reason;
     if(sr.status==="rejected") log("Stride failed: "+sr.reason.message);
     const rows=(sr.status==="fulfilled"?sr.value:[]).concat(live);
@@ -1979,19 +1977,19 @@ async function refresh(){
     const added=merge(rows); okCount++;
     if(!refresh.backfill&&sr.status==="fulfilled"){ refresh.backfill=true; const t0=Date.now();   // older positions, once, in the background
       strideGet("stride-history",t0-HISTORY_MIN*60000,t0-FIRST_WINDOW_MIN*60000+60000)
-        .then(r=>{ const n=merge(r); log(`history: ${r.length} rows, ${n} new`); render(); })
+        .then(r=>{ if(genStale(g)) return; const n=merge(r); log(`history: ${r.length} rows, ${n} new`); render(); })
         .catch(e=>{ log("history fetch failed: "+e.message); refresh.backfill=false; }); }
     try{ if(added&&probeAt&&probeState!=="disabled") buildProfile(); }catch(e){ log("profile failed: "+e.message); }
     try{ detectPasses(); recordPredictions(buildModel()); }catch(e){ log("accuracy step failed: "+e.message); }
     log(`refresh ok: ${rows.length} rows, ${added} new, ${vehicles.size} vehicles`);
     refreshErr="";
   }catch(e){failCount++;refreshErr=e.message;log("refresh failed: "+e.message);}
-  finally{inFlight=false;render();if(!document.hidden)schedule(pollInterval());}
+  finally{inFlight=false; if(genStale(g)){ log("refresh was for the old direction: dropped"); refresh(); return; } render();if(!document.hidden)schedule(pollInterval());}
 }
 setInterval(()=>{ // ticking clocks + countdown
   if(document.hidden) return;
   renderFresh();
-  $("ver").textContent=`${VERSION} · built ${BUILD} (${fmtAge((Date.now()-Date.parse(BUILD))/1000)} ago) · opened ${fmtAge((Date.now()-PAGE_LOADED)/1000)} ago · ok ${okCount}/fail ${failCount}${inFlight?" · fetching…":nextAt?` · next in ${Math.max(0,Math.round((nextAt-Date.now())/1000))}s`:""} · relay ${LIVE_BASE.replace(/^https?:\/\//,"")}`;
+  $("ver").textContent=`${VERSION} · opened ${fmtAge((Date.now()-PAGE_LOADED)/1000)} ago · ok ${okCount}/fail ${failCount}${inFlight?" · fetching…":nextAt?` · next in ${Math.max(0,Math.round((nextAt-Date.now())/1000))}s`:""} · relay ${LIVE_BASE.replace(/^https?:\/\//,"")}`;
 },1000);
 setInterval(()=>{ if(!document.hidden){ const m=lastModel.length?buildModel():lastModel; renderHero(m); renderBoard(m); renderBusCard(m); if(!lensK) renderStrip(m);} },15000);
 document.addEventListener("visibilitychange",()=>{
@@ -2190,7 +2188,7 @@ $("btnFit").addEventListener("click",fitRoute);
   cb.addEventListener("change",()=>{ ALIGN_FACING=cb.checked; store("alignFacing",ALIGN_FACING?null:"0"); render(); }); })();
 (function(){const sel=$("mapStyle"); sel.innerHTML=Object.entries(STYLES).map(([k,v])=>`<option value="${k}">${esc(v.name)}</option>`).join(""); sel.value=MAP_STYLE;
   sel.addEventListener("change",()=>setMapStyle(sel.value));})();
-$("accReset").addEventListener("click",()=>{acc={};store(ACC_KEY,null);renderAccuracy();toast("Accuracy stats reset");});
+$("accReset").addEventListener("click",()=>{acc={};store(accKey(),null);renderAccuracy();toast("Accuracy stats reset");});
 $("lineOpts").addEventListener("click",e=>{const b=e.target.closest(".opt");if(b)switchTo(b.dataset.ref,b.dataset.line);});
 $("lineForm").addEventListener("submit",async e=>{e.preventDefault();const n=$("lineIn").value.trim();if(!n)return;
   const d=todayIL();try{const rt=await getJSON("routes",routesUrl(d,n));
