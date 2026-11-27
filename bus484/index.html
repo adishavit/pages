@@ -244,6 +244,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
       <div id="status">Loading…</div>
       <h3>Map style</h3>
       <select id="mapStyle" style="font:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);max-width:100%"></select>
+      <label id="alignRow" style="display:none;gap:8px;align-items:center;margin-top:10px;font-size:14px"><input type="checkbox" id="alignFacing"> Line up facing stops (out-and-back loop lines)</label>
       <h3>About</h3>
       <div class="mut" style="font-size:12px">Positions: <b>green</b> = live (~1 min old), <b>red</b> = recent (a few minutes old), <b>grey</b> = no recent update, dashed = estimate. ETAs are the operator's own predictions. Delays compare with today's timetable.</div>
       <details id="diag" hidden><summary>Diagnostics</summary>
@@ -264,7 +265,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v94";
+const VERSION="v95";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -528,6 +529,30 @@ function snap(lat,lon){let best={along:0,d:Infinity};const kx=Math.cos(lat*Math.
   for(let i=1;i<routePts.length;i++){const[ay,ax]=routePts[i-1],[by,bx]=routePts[i];const ux=(bx-ax)*kx,uy=(by-ay)*ky,px=(lon-ax)*kx,py=(lat-ay)*ky,L2=ux*ux+uy*uy;
     const t=L2?Math.max(0,Math.min(1,(px*ux+py*uy)/L2)):0,d=Math.hypot(px-t*ux,py-t*uy);if(d<best.d)best={d,along:routeCum[i-1]+t*(routeCum[i]-routeCum[i-1])};}
   return best;}
+// Where the road passes the same place twice (out-and-back lines like 62 Jerusalem use the same street both ways),
+// the nearest point is ambiguous. snapCands: the separate passes within 35 m of the nearest one. snapHint picks among
+// them by heading (the pass whose direction matches) and then by a distance hint (Stride's distance from the trip
+// start, or the vehicle's previous position: buses only move forward). strict: no pass in that direction -> d=Infinity.
+function snapCands(lat,lon){ const kx=Math.cos(lat*Math.PI/180)*111320,ky=110540, c=[]; let dmin=Infinity;
+  for(let i=1;i<routePts.length;i++){const[ay,ax]=routePts[i-1],[by,bx]=routePts[i];const ux=(bx-ax)*kx,uy=(by-ay)*ky,px=(lon-ax)*kx,py=(lat-ay)*ky,L2=ux*ux+uy*uy;
+    const t=L2?Math.max(0,Math.min(1,(px*ux+py*uy)/L2)):0,d=Math.hypot(px-t*ux,py-t*uy); dmin=Math.min(dmin,d);
+    c.push({d,along:routeCum[i-1]+t*(routeCum[i]-routeCum[i-1])}); }
+  const near=c.filter(x=>x.d<=dmin+35).sort((a,b)=>a.along-b.along), g=[];
+  for(const x of near){ const last=g[g.length-1]; if(last&&x.along-last.end<150){ last.end=x.along; if(x.d<last.best.d) last.best=x; } else g.push({end:x.along,best:x}); }
+  return g.map(x=>x.best); }
+function snapHint(lat,lon,hint,brg,strict){
+  if(routePts.length<2) return {along:0,d:Infinity};
+  const c=snapCands(lat,lon); if(!c.length) return {along:0,d:Infinity};
+  let cs=c;
+  if(Number.isFinite(brg)){ const ok=c.filter(x=>angDiff(routeBearing(x.along),brg)<=90); if(ok.length) cs=ok; else if(strict) return {along:c[0].along,d:Infinity}; }
+  if(cs.length>1&&Number.isFinite(hint)) return cs.reduce((m,x)=>Math.abs(x.along-hint)<Math.abs(m.along-hint)?x:m);
+  return cs.reduce((m,x)=>x.d<m.d?x:m); }
+const brgOf=(a,b)=>{const y=Math.sin((b.lon-a.lon)*Math.PI/180)*Math.cos(b.lat*Math.PI/180),x=Math.cos(a.lat*Math.PI/180)*Math.sin(b.lat*Math.PI/180)-Math.sin(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.cos((b.lon-a.lon)*Math.PI/180);return(Math.atan2(y,x)*180/Math.PI+360)%360;};
+// our line's buses: snap each fix in time order (fills f._sn), hinted by Stride's distance-from-start or the previous fix
+function vehSnaps(fx){ let prev=null;
+  for(const f of fx){ if(!f._sn){ const dfs=f.distance_from_journey_start, brg=Number.isFinite(f.bearing)&&f.bearing>0&&f.velocity>0?f.bearing:null;
+      f._sn=snapHint(f.lat,f.lon,Number.isFinite(dfs)&&dfs>0?dfs:prev,brg,false); }
+    prev=f._sn.along; } }
 // nearest point on the road at or after `from` (m); among near-equal matches (within 30 m) the earliest wins
 function snapAfter(lat,lon,from){ const kx=Math.cos(lat*Math.PI/180)*111320,ky=110540, c=[];
   for(let i=1;i<routePts.length;i++){ if(routeCum[i]<from) continue; const[ay,ax]=routePts[i-1],[by,bx]=routePts[i];
@@ -615,11 +640,14 @@ function clearMyStop(){ MY_STOP=""; store("mystop:"+LINE+":"+REF,null); setUrl()
 //  between them: To if the selected bus has already passed From (you're on it); otherwise the nearer one on the
 //  strip as drawn, and the middle 15% goes to To (the destination is what people refine).
 function tapStation(code){
-  code=String(code); const x=stops.findIndex(s=>s.code===code); if(x<0) return;
+  code=String(code); let x=stops.findIndex(s=>s.code===code); if(x<0) return;
   if(code===MY_STOP) return clearMyStop();
   if(code===TO_STOP) return setToStop("");
   const fi=stops.findIndex(s=>s.code===MY_STOP), ti=stops.findIndex(s=>s.code===TO_STOP);
   if(fi<0){ if(ti>=0&&x>=ti) TO_STOP=""; return setMyStop(code); }
+  // out-and-back loops: From/To are places. A station before From whose facing twin comes after it means
+  // "I'm going there": use the twin (same place, the pass this bus actually reaches it on)
+  if(x<fi&&STRIP_TWIN[x]!=null&&STRIP_TWIN[x]>fi){ x=STRIP_TWIN[x]; code=stops[x].code; }
   if(x<fi) return setMyStop(code);
   if(ti<0||x>ti) return setToStop(code);
   const sb=SEL_BUS&&lastModel.find(b=>b.ref===SEL_BUS);
@@ -776,7 +804,7 @@ async function loadStopZones(){
   if(probeAt&&probeState!=="disabled"){ buildProfile(); render(); }
 }
 function computeZones(){
-  const z=[]; for(const s of zoneStops){ const sn=snap(s.lat,s.lon); if(sn.d<=40) z.push(sn.along); }
+  const z=[]; for(const s of zoneStops) for(const sn of (routePts.length>1?snapCands(s.lat,s.lon):[])) if(sn.d<=40) z.push(sn.along);   // a stop on a street used both ways counts on both passes
   for(const s of stops) z.push(s.along);
   zoneAlong=[...new Set(z.map(a=>Math.round(a)))].sort((a,b)=>a-b);
 }
@@ -792,7 +820,10 @@ function probePairs(rows){
   const out=[]; let veh=0, dwellPairs=0;
   for(const[,arr]of byV){
     arr.sort((x,y)=>x.t-y.t); let used=false;
-    for(const p of arr){const sn=snap(p.lat,p.lon);p.a=sn.along;p.d=sn.d;}
+    // heading from its own movement (else reported bearing); a fix with no pass of our road in that direction is dropped
+    for(let k=0;k<arr.length;k++){ const p=arr[k], nx=arr[k+1], pv=arr[k-1];
+      const brg=nx&&dist(p.lat,p.lon,nx.lat,nx.lon)>15?brgOf(p,nx):pv&&dist(pv.lat,pv.lon,p.lat,p.lon)>15?brgOf(pv,p):(Number.isFinite(p.brg)&&p.brg>0?p.brg:null);
+      const sn=snapHint(p.lat,p.lon,pv?pv.a:null,brg,true); p.a=sn.along; p.d=sn.d; }
     for(let k=1;k<arr.length;k++){
       const p=arr[k-1],q=arr[k],dt=(q.t-p.t)/1000;
       if(dt<20||dt>300||p.d>50||q.d>50) continue;
@@ -974,7 +1005,7 @@ function recordPredictions(model){
 function detectPasses(){
   let n=0;
   for(const[ref,m]of vehicles){
-    const fx=[...m.values()].sort((a,b)=>tms(a)-tms(b));
+    const fx=[...m.values()].sort((a,b)=>tms(a)-tms(b)); if(routePts.length>1) vehSnaps(fx);
     for(let k=1;k<fx.length;k++){
       const p=fx[k-1],q=fx[k],dt=tms(q)-tms(p); if(dt<=0||dt>8*60000) continue;
       const sp=p._sn||(p._sn=snap(p.lat,p.lon)), sq=q._sn||(q._sn=snap(q.lat,q.lon));
@@ -1048,15 +1079,16 @@ function buildModel(){
   for(const[ref,m]of vehicles){
     const all=[...m.values()].sort((a,b)=>tms(a)-tms(b)), r=all[all.length-1];
     if(newestMs!=null&&newestMs-tms(r)>KEEP_MIN*60000) continue;   // older history is only for "passed my stop"
+    if(routePts.length>1) vehSnaps(all);
     const fx=all.filter(f=>tms(r)-tms(f)<=KEEP_MIN*60000);
     const behind=((r.live?newestMs:(strideNewestMs??newestMs))-tms(r))/60000;
-    const silentMin=(now-tms(r))/60000, snEnd=routePts.length>1?snap(r.lat,r.lon).along:0;
+    const silentMin=(now-tms(r))/60000, snEnd=routePts.length>1?r._sn.along:0;
     if(snEnd>=routeLen()-300&&silentMin>3) continue;                 // reached the terminus: trip finished
     const stale=behind>STALE_MIN||silentMin>15;
-    const sn=routePts.length>1?snap(r.lat,r.lon):{along:0,d:0};
+    const sn=routePts.length>1?r._sn:{along:0,d:0};
     // recent speed along the route
     let sp=0; const old=fx.find(f=>tms(r)-tms(f)<=10*60000);
-    if(old&&old!==r){const dt=(tms(r)-tms(old))/1000; if(dt>=90) sp=Math.max(0,(sn.along-snap(old.lat,old.lon).along)/dt);}
+    if(old&&old!==r){const dt=(tms(r)-tms(old))/1000; if(dt>=90) sp=Math.max(0,(sn.along-old._sn.along)/dt);}
     sp=Math.min(sp,25);
     // heading: from movement, else reported bearing
     let brg=null; const prev=[...fx].reverse().find(f=>f!==r&&dist(f.lat,f.lon,r.lat,r.lon)>30);
@@ -1230,7 +1262,7 @@ function passedMyStop(){
   const s=myStop(); if(!s||routePts.length<2||!Number.isFinite(s.along)) return [];
   const now=Date.now(), out=[];
   for(const[ref,m]of vehicles){
-    const fx=[...m.values()].sort((a,b)=>tms(a)-tms(b)); if(!fx.length) continue;
+    const fx=[...m.values()].sort((a,b)=>tms(a)-tms(b)); if(!fx.length) continue; vehSnaps(fx);
     const sn=f=>f._sn||(f._sn=snap(f.lat,f.lon));
     let hit=null;
     for(let k=fx.length-1;k>=1&&!hit;k--){ const a=fx[k-1],b=fx[k],sa=sn(a),sb=sn(b);
@@ -1394,10 +1426,16 @@ function render(){
 // station farthest from the start), back on the bottom bar; the turnaround leg is the rounded end.
 let stripX0=null, stripFlip=false, stripU=null, stripRow=null, LOOPK=-1, stripLo=3, stripHi=97;
 const LOOP_M=8, LOOP_MIN_STOPS=20, SNAKE_MIN_STOPS=30;   // short lines read fine as a straight strip
-let SNAKE=false;   // long one-way line folded in two (same track as the racetrack, but open at the end)
+let SNAKE=false;
+// loop lines that go out and back on the same streets: "twin" = the station facing this one on the other pass (< 120 m)
+let STRIP_TWIN=[], ALIGN_FACING=load("alignFacing")!=="0";
+function computeTwins(){ STRIP_TWIN=stops.map(()=>null); if(!title.loop) return;
+  for(let i=0;i<stops.length;i++){ let bj=null,bd=120;
+    for(let j=0;j<stops.length;j++){ if(Math.abs(j-i)<3) continue; const d=dist(stops[i].lat,stops[i].lon,stops[j].lat,stops[j].lon); if(d<bd){bd=d;bj=j;} }
+    STRIP_TWIN[i]=bj; } }   // long one-way line folded in two (same track as the racetrack, but open at the end)
 function stripLayout(){
   if(stops.length<2){stripX0=null;return;}
-  LOOPK=-1; SNAKE=false;
+  LOOPK=-1; SNAKE=false; computeTwins();
   if(title.loop&&stops.length>=LOOP_MIN_STOPS){ let k=-1,bd=0; stops.forEach((st,i)=>{const d=dist(stops[0].lat,stops[0].lon,st.lat,st.lon); if(d>bd){bd=d;k=i;}});
     if(k>=2&&k<=stops.length-3) LOOPK=k; }
   const w=[];
@@ -1410,7 +1448,9 @@ function stripLayout(){
     while(k<w.length-1&&u+w[k]<=tot/2){u+=w[k];k++;} LOOPK=Math.max(2,Math.min(stops.length-3,k)); SNAKE=true; }
   stripFlip=LOOPK>=0?stops[LOOPK].lon<stops[0].lon:stops[stops.length-1].lon<stops[0].lon;   // like the map: west on the left
   if($("strip").classList.contains("loop")!==(LOOPK>=0)){ $("strip").classList.toggle("loop",LOOPK>=0); requestAnimationFrame(()=>setSheet(sheetIdx)); }   // strip height changed: re-fit the panel
+  { const r=$("alignRow"); if(r) r.style.display=(LOOPK>=0&&!SNAKE&&STRIP_TWIN.some((t,i)=>t!=null&&i<=LOOPK))?"flex":"none"; }
   if(LOOPK>=0){ let u=0; stripU=[0]; for(const v of w){u+=v; stripU.push(u);}
+    if(!SNAKE&&ALIGN_FACING) alignFacing();
     stripX0=stops.map((_,i)=>foldU(stripU[i]).x); stripRow=stops.map((_,i)=>i<=LOOPK?0:1);
     stripLo=LOOP_M; stripHi=100-LOOP_M; LG=loopGeom(); return; }
   LG=null;
@@ -1419,6 +1459,19 @@ function stripLayout(){
   for(const v of w){x+=v/tot*(100-2*M); stripX0.push(x);}
   if(stripFlip) stripX0=stripX0.map(v=>100-v);
   stripLo=M; stripHi=100-M;
+}
+// racetrack: put each return-pass station under the outbound station it faces (when it has one); the others are
+// spaced between those anchors as before. Only the bottom bar moves. Optional (setting), in case it reads oddly.
+function alignFacing(){
+  const K=LOOPK, n=stops.length, uK=stripU[K], uK1=stripU[K+1], uN=stripU[n-1];
+  if(!(uK>0&&uN>uK1)) return;
+  const anc=[[K+1,0]];   // [station, fraction along the bottom bar from the bend]
+  for(let j=K+2;j<n-1;j++){ const i=STRIP_TWIN[j]; if(i==null||i>K) continue; const f=1-stripU[i]/uK;
+    if(f>anc[anc.length-1][1]+0.01&&f<0.99) anc.push([j,f]); }   // keep the order (a twin out of order is skipped)
+  anc.push([n-1,1]); if(anc.length<=2) return;
+  const f0=stops.map((_,j)=>(stripU[j]-uK1)/(uN-uK1));
+  for(let a=0;a<anc.length-1;a++){ const [j0,g0]=anc[a],[j1,g1]=anc[a+1];
+    for(let j=j0;j<=j1;j++){ const t=(f0[j]-f0[j0])/((f0[j1]-f0[j0])||1); stripU[j]=uK1+(g0+t*(g1-g0))*(uN-uK1); } }
 }
 // racetrack: unfolded coordinate (cumulative spacing) -> position on the top (row 0) or bottom (row 1) bar
 function foldU(u){
@@ -1792,6 +1845,8 @@ $("pickX").addEventListener("click",()=>openPicker(false));
 $("recent").addEventListener("click",e=>{const b=e.target.closest(".opt");if(b)switchTo(b.dataset.ref,b.dataset.line);});
 if(HAVE_MAP) map.on("click",()=>openPicker(false));
 $("btnFit").addEventListener("click",fitRoute);
+(function(){const cb=$("alignFacing"); cb.checked=ALIGN_FACING;
+  cb.addEventListener("change",()=>{ ALIGN_FACING=cb.checked; store("alignFacing",ALIGN_FACING?null:"0"); render(); }); })();
 (function(){const sel=$("mapStyle"); sel.innerHTML=Object.entries(STYLES).map(([k,v])=>`<option value="${k}">${esc(v.name)}</option>`).join(""); sel.value=MAP_STYLE;
   sel.addEventListener("change",()=>setMapStyle(sel.value));})();
 $("accReset").addEventListener("click",()=>{acc={};store(ACC_KEY,null);renderAccuracy();toast("Accuracy stats reset");});
