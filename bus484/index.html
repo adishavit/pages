@@ -77,6 +77,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .strk polyline{fill:none;stroke-width:5}.strk .slow{stroke-width:6}.strk .jam{stroke-width:8}
 .strk .past{stroke:var(--old);opacity:.35;stroke-width:3}
 .strk .chev{fill:none;stroke:#fff;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.95}
+.strk .chev.past{stroke:#666;opacity:.8}.strk .chev.nodata{stroke:var(--acc);opacity:1}
 .strk .snEnd{stroke:var(--acc);stroke-width:3;stroke-linecap:round;opacity:.8}
 .sbus.up{background:var(--bg,#fff)!important;color:var(--str);box-shadow:none;border:1.5px dashed var(--str);line-height:11px;cursor:default;opacity:.85}
 .sbus.up::after,.sbus.up::before{background:var(--str);opacity:.5;margin-left:0!important}
@@ -266,7 +267,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v97";
+const VERSION="v99";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1445,7 +1446,7 @@ function stripLayout(){
     w.push(Number.isFinite(dt)&&dt>0?Math.sqrt(Math.max(30,dt)):0.6+Math.log1p(Math.max(0,da)/300));
   }
   // long one-way lines: fold at the middle (by strip spacing) into a snake, so each station gets twice the width
-  if(LOOPK<0&&!title.loop&&stops.length>=SNAKE_MIN_STOPS){ const tot=w.reduce((a,b)=>a+b,0); let u=0,k=0;
+  if(LOOPK<0&&!title.loop&&stops.length>=SNAKE_MIN_STOPS&&($("stripIn").clientWidth||360)/stops.length<24){ const tot=w.reduce((a,b)=>a+b,0); let u=0,k=0;   // only when crowded (not on a wide screen)
     while(k<w.length-1&&u+w[k]<=tot/2){u+=w[k];k++;} LOOPK=Math.max(2,Math.min(stops.length-3,k)); SNAKE=true; }
   stripFlip=LOOPK>=0?stops[LOOPK].lon<stops[0].lon:stops[stops.length-1].lon<stops[0].lon;   // like the map: west on the left
   if($("strip").classList.contains("loop")!==(LOOPK>=0)){ $("strip").classList.toggle("loop",LOOPK>=0); requestAnimationFrame(()=>setSheet(sheetIdx)); }   // strip height changed: re-fit the panel
@@ -1492,19 +1493,25 @@ function foldU(u){
 // and compresses the rest; order is preserved and it relaxes smoothly on release.
 let lensF=50, lensK=0, lensAnim=0;
 function lensX(x){ return lensGen(x,stripLo,stripHi); }
+// Local lens: stations within ~LENS_R px of the finger spread apart, ones farther away stay where they are
+// (displacement d·k·exp(-(d/R)²); monotone for k < 2.24). Its strength k adapts to the local spacing: just enough to
+// bring neighbouring stations ~LENS_TARGET px apart, and none where they already are (wide screens, sparse lines).
+const LENS_R=55, LENS_TARGET=30, LENS_KMAX=2;
+let lensGainF=null, lensGainV=0;
+function lensUnits(){ const loop=LOOPK>=0&&LG; return {loop, ppu:loop?1:($("stripIn").clientWidth||360)/100}; }
+function lensGain(){
+  if(lensGainF===lensF) return lensGainV; lensGainF=lensF;
+  const {loop,ppu}=lensUnits(), xs=stops.map((_,i)=>loop?loopP(stripU[i]):stripX0[i]);
+  const near=xs.map(x=>[Math.abs(x-lensF),x]).sort((a,b)=>a[0]-b[0]).slice(0,4).map(z=>z[1]).sort((a,b)=>a-b);
+  const g=near.length>1?(near[near.length-1]-near[0])/(near.length-1)*ppu:Infinity;
+  lensGainV=Math.max(0,Math.min(LENS_KMAX,LENS_TARGET/Math.max(1,g)-1)); if(lensGainV<0.15) lensGainV=0;
+  return lensGainV; }
 function lensGen(x,lo,hi){
-  if(lensK<=0||!stripX0) return x;
-  // the lens works between the end stations, which stay pinned; its centre is kept a little inside them and,
-  // near an end, slides inward so the stations next to a pinned end get room to spread
-  const span=hi-lo;
-  if(span<=0) return x;
-  const m=3*lensK, fish=n=>((m+1)*n)/(m*n+1);
-  const f=Math.max(lo+0.08*span,Math.min(hi-0.08*span,lensF));
-  const fp=f+(Math.max(lo+0.25*span,Math.min(hi-0.25*span,f))-f)*lensK;
-  if(x<=lo||x>=hi) return x;                                   // ends pinned (and anything outside them)
-  if(x>=f) return fp+fish((x-f)/(hi-f))*(hi-fp);
-  return fp-fish((f-x)/(f-lo))*(fp-lo);
-}
+  if(lensK<=0||!stripX0||x<=lo||x>=hi) return x;               // ends pinned
+  const k=lensGain()*lensK; if(k<=0) return x;
+  const {ppu}=lensUnits(), R=LENS_R/ppu, d=x-lensF, u=d/R;
+  const taper=Math.min(1,(x-lo)/R,(hi-x)/R);                    // fade out next to the pinned ends
+  return Math.max(lo,Math.min(hi,x+d*k*Math.exp(-u*u)*taper)); }
 const SX=i=>LOOPK>=0&&LG?loopAt(stripU[i]).x/LG.W*100:lensX(stripX0[i]);       // station position on screen (%), lens applied
 function stripX(a){ return LOOPK>=0&&stripU?stripPos(a).x:lensX(stripXraw(a)); }
 function stripPos(a){ if(LOOPK<0||!LG) return {x:lensX(stripXraw(a)),row:0};
@@ -1675,7 +1682,9 @@ function renderLoopStrip(model){
     // direction: a small white chevron ON the track in the middle of each segment with room for it (follows the bends)
     const P0=PL(A),P1=PL(B);
     if(P1-P0>22){ const m=(P0+P1)/2, a=loopXY(m-2), c=loopXY(m+2), q=loopXY(m), ang=Math.atan2(c.y-a.y,c.x-a.x)*180/Math.PI;
-      chev+=`<path class="chev" d="M-1.8 -2.4 L1.4 0 L-1.8 2.4" transform="translate(${q.x.toFixed(1)} ${q.y.toFixed(1)}) rotate(${ang.toFixed(0)})"/>`; }
+      const passedSeg=B<=passedA, lvM=(()=>{ if(!prof) return null; const k=Math.floor(((A+B)/2)/prof.C); return k<prof.n?cellLevel(k):null; })();
+      // white on a coloured track; on grey (passed) or pale (no data) the white would vanish: use a darker stroke
+      chev+=`<path class="chev${passedSeg?" past":lvM==null?" nodata":""}" d="M-1.8 -2.4 L1.4 0 L-1.8 2.4" transform="translate(${q.x.toFixed(1)} ${q.y.toFixed(1)}) rotate(${ang.toFixed(0)})"/>`; }
   }
   // remaining travel time of the followed bus to my getting-off stop, inside the track between the bus and the stop
   { const t=toStop();
