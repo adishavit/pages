@@ -107,11 +107,6 @@ button{font:inherit;color:inherit;cursor:pointer}
 #heroMin{font-size:34px;font-weight:800;line-height:1}
 #heroTxt{font-size:14px;min-width:0}
 #heroNext{font-size:12px;color:var(--mut);margin-top:3px;min-height:1.4em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#tabs{display:flex;border-bottom:1px solid var(--line);padding:0 8px}
-#tabs button{flex:1;background:none;border:0;padding:9px 4px;font-size:13px;color:var(--mut);border-bottom:2px solid transparent}
-#tabs button .gear{display:block;margin:-2px auto}
-#tabs button[data-t="set"]{flex:0 0 56px}
-#tabs button.sel{color:var(--acc);border-bottom-color:var(--acc);font-weight:600}
 #panes{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:0 12px 24px}
 .sech{font-size:13px;font-weight:700;color:var(--mut);margin:10px 4px 2px;cursor:pointer}
 #allStops{margin-top:8px}#allStops>summary{list-style-position:inside}
@@ -131,7 +126,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 #sheet.peek .sfix{transform:scale(1.6)}
 #sheet.peek #heroMin{font-size:24px}
 #sheet.peek #hero{padding-bottom:4px}
-.pane{display:none;padding:8px 12px 24px}.pane.sel{display:block}
+
 #status{font-size:12px;color:var(--mut);padding:2px 4px 6px}
 #status.err{color:var(--late)}
 #disc{font-size:11px;color:var(--mut);padding:12px 4px 6px;opacity:.8}
@@ -287,7 +282,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v147"; window.__appStarted=true;
+const VERSION="v148"; window.__appStarted=true;
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1349,27 +1344,6 @@ function renderMap(model){
   for(const[ref,e]of estMarkers) if(!keep.has(ref)){e.m.remove();estMarkers.delete(ref);}
   tickEst(true);
 }
-function renderCards(model){
-  const el=$("buses"); if(!stops.length){el.innerHTML="";return;}
-  if(!model.length&&!liveEta.size){ const nx=myStop()?myStopPredictions(model)[0]:null, ns=nx?"":nextServiceText();
-    el.innerHTML=`<div class="card">No ${esc(title.num)} buses on the road right now.${nx?`<br>Next one at your stop: <b>${hm(nx.t)}</b>${nx.src==="tt"?" (scheduled)":""}`:ns?`<br>${ns}`:""}</div>`; return; }
-  let h="";
-  for(const b of model){
-    const at=stopAtAlong(b.along), nx=nextStopAfter(b.along);
-    const badge=b.stale?`<span class="badge b-old">no update ${Math.round(b.behind)} min</span>`:b.live?`<span class="badge b-live">live</span>`:`<span class="badge b-str">recent</span>`;
-    h+=`<div class="card${b.stale?" stale":""}"><h4>${busName(b)} ${badge} ${delayHtml(b)}</h4>
-      <div>${nx?`Next: <span class="rtl">${esc(nx.name)}</span>`:`At the terminus`} <span class="mut">· after <span class="rtl">${esc(at.name)}</span></span></div>
-      <div class="mut">Seen at ${hm(tms(b.r))}</div>
-      ${b.etas.length?`<div class="etas">🕓 ${b.etas.slice(0,4).map(u=>`<span class="rtl">${esc(u.s.name)}</span> <b>${hm(u.eta)}</b>`).join(" · ")}</div>`:""}
-</div>`;
-  }
-  const shown=new Set(model.map(b=>b.ref));
-  for(const[vr]of liveEta){ if(shown.has(vr)) continue; const ups=upcomingEtas(vr); if(!ups.length) continue;
-    const st=startOf(vr);
-    h+=`<div class="card"><h4>${esc(title.num)}${st!=null?` <span class="mut" style="font-weight:400">· ${hm(st)} dep.</span>`:""} <span class="badge b-old">not departed yet</span></h4>
-      <div class="etas">🕓 ${ups.slice(0,4).map(u=>`<span class="rtl">${esc(u.s.name)}</span> <b>${hm(u.eta)}</b>`).join(" · ")}</div></div>`; }
-  el.innerHTML=h;
-}
 function renderDiagram(model,preds){
   const el=$("diagram"); if(!stops.length){el.innerHTML="";return;}
   const ROW=50, nextBy=new Map();
@@ -1390,19 +1364,6 @@ function renderDiagram(model,preds){
     h+=`<div class="dbus" style="top:${top}px"><div class="bm ${b.stale?"old":b.live?"live":""}" style="position:static;transform:none">${busTagHtml(b,false)}</div></div>`;
   }
   el.innerHTML=h;
-}
-function renderDeps(model){
-  if($("depsHd")) $("depsHd").innerHTML=stops.length?`Timetable · departures from <span class="rtl">${esc(shortName(stops[0].name))}</span>`:"Timetable";
-  const el=$("deps"); if(!rides.length){el.innerHTML=`<div class="card mut">No timetable for today.</div>`;return;}
-  const now=Date.now(), s=myStop(), byStart=new Map(model.filter(b=>b.start!=null).map(b=>[b.start,b]));
-  const rows=rides.map(r=>({st:Date.parse(r.start_time),end:Date.parse(r.end_time)}));
-  const first=Math.max(0,rows.findIndex(r=>r.end>now-15*60000)), list=rows.slice(first===-1?rows.length:first,(first===-1?rows.length:first)+12);
-  let h=`<table><tr><th>Departs</th>${s?`<th>At <span class="rtl">${esc(s.name.split("/")[0])}</span></th>`:""}<th>Status</th></tr>`;
-  for(const r of list){const b=byStart.get(r.st);
-    const atMine=s&&Number.isFinite(s.off)?r.st+s.off*1000+(b&&b.delay>0?b.delay*60000:0):null;
-    const status=b?`${b.live?"🟢":"🔴"} running ${delayHtml(b)}`:r.st>now?"scheduled":r.end<now?`<span class="mut">done / no data</span>`:`<span class="mut">no data</span>`;
-    h+=`<tr class="${r.end<now&&!b?"past":""}"><td><b>${hm(r.st)}</b></td>${s?`<td>${atMine?hm(atMine):""}</td>`:""}<td>${status}</td></tr>`;}
-  el.innerHTML=h+`</table>`;
 }
 // buses that already passed my stop (last 30 min). Pass time is interpolated between the fixes on either side;
 // if those are far apart it is approximate (~); if the bus was only seen after the stop, we only know "before".
@@ -1805,9 +1766,7 @@ function renderStrip(model){
   const passedA=fb?Math.max(-1,...stops.filter(s=>s.along<busA-30).map(s=>s.along)):-1;   // stations the followed bus has actually left behind
   const nextIdx=fb?stops.map((s,i)=>i).filter(i=>stops[i].along>busA+30).slice(0,4):[];
   const L=(a0,a1)=>{const x0=stripX(a0),x1=stripX(a1);return {l:Math.min(x0,x1),w:Math.max(.3,Math.abs(x1-x0))};};
-  const LO=r=>r?" lo":"", loop=LOOPK>=0;
   let h="";
-  if(loop) h+=`<i class="sarc close${stripFlip?"":" m"}" style="left:${SX(0)}%"></i>`;   // start and end are next to each other
   // line: traffic colour where measured; jams striped; passed part dimmed
   for(let i=0;i<stops.length-1;i++){
     const A=stops[i].along,B=stops[i+1].along; let pieces=[];
@@ -1816,20 +1775,15 @@ function renderStrip(model){
         if(cur&&cur.lv===lv) cur.a1=a1; else { if(cur) pieces.push(cur); cur={lv,a0,a1}; } }
       if(cur) pieces.push(cur); }
     if(!pieces.length) pieces=[{lv:null,a0:A,a1:B}];
-    if(loop&&i===LOOPK){   // the turnaround leg: the rounded end of the racetrack
-      const lv=pieces.reduce((m,p)=>p.lv!=null&&p.lv>(m??-1)?p.lv:m,null), past=passedA>=B;
-      h+=`<i class="sarc${stripFlip?" m":""}${past?" past":""}" style="left:${SX(i)}%;border-color:${lv==null?"var(--acc)":LEVEL_COLOR[lv]};${lv==null&&!past?"opacity:.5;":""}"></i>`;
-      continue; }
-    const rowSeg=loop?stripRow[i+1]:0;
     for(const p of pieces){
       // split at the focus bus: before it = passed (dimmed)
       const parts=(passedA>p.a0&&passedA<p.a1)?[{...p,a1:passedA,past:true},{...p,a0:passedA,past:false}]:[{...p,past:p.a1<=passedA}];
       for(const q of parts){ const g=L(q.a0,q.a1);
         const bg=q.lv==null?"var(--acc)":q.lv===2?"repeating-linear-gradient(135deg,#c62828 0 4px,#7f0000 4px 7px)":LEVEL_COLOR[q.lv];
-        h+=`<i class="sl${q.lv===2?" jam":q.lv===1?" slow":""}${q.past?" past":""}${LO(rowSeg)}" style="left:${g.l}%;width:${g.w}%;background:${bg};${q.lv==null&&!q.past?"opacity:.5;":""}"></i>`; }
+        h+=`<i class="sl${q.lv===2?" jam":q.lv===1?" slow":""}${q.past?" past":""}" style="left:${g.l}%;width:${g.w}%;background:${bg};${q.lv==null&&!q.past?"opacity:.5;":""}"></i>`; }
     }
     const gx=Math.abs(SX(i+1)-SX(i));
-    if(gx>7&&!rowSeg){   // direction: the same chevron on the track as on the folded strip and the map
+    if(gx>7){   // direction: the same chevron on the track as on the folded strip and the map
       const A=stops[i].along,B=stops[i+1].along, k=prof?Math.floor(((A+B)/2)/prof.C):-1, lv=prof&&k<prof.n?cellLevel(k):null;
       h+=`<svg class="lchev${B<=passedA?" past":lv==null?" nodata":""}" aria-hidden="true" viewBox="-5 -5 10 10" style="left:${(SX(i)+SX(i+1))/2}%;transform:translate(-50%,-50%)${stripFlip?" rotate(180deg)":""}"><path d="M-1.8 -2.4 L1.4 0 L-1.8 2.4"/></svg>`; }
   }
@@ -1837,9 +1791,8 @@ function renderStrip(model){
   { const t=toStop();
     if(t&&fb&&!fb.stale&&busA<t.along-30){ const eta=ourPred(fb,t)??(()=>{const mp=methodPreds(fb,t),k=methodRank().find(m=>mp[m]!=null);return k?mp[k]:null;})();
       if(eta!=null){ const m=Math.max(0,Math.round((eta-Date.now())/60000));
-        const ti=stops.indexOf(t), pb=stripPos(Math.max(0,passedA)), tr=loop?stripRow[ti]:0;
-        const gx=pb.row===tr?(pb.x+SX(ti))/2:(SX(ti)+SX(LOOPK+1))/2;   // loop: bus on the other bar -> between the bend and the stop
-        h+=`<span class="sgap${LO(tr)}" style="left:${gx}%" title="time left for this bus to reach your getting-off stop">~${m} min left</span>`; } } }
+        const gx=(stripX(Math.max(0,passedA))+SX(stops.indexOf(t)))/2;
+        h+=`<span class="sgap" style="left:${gx}%" title="time left for this bus to reach your getting-off stop">~${m} min left</span>`; } } }
   // stations, all named (angled); my stop with its ETA
   const p=myStop()?myStopPredictions(model):[], my=myStop(), selB=SEL_BUS&&model.find(b=>b.ref===SEL_BUS), selF=selB?selAt(selB,my):null;
   const myEta=selB?(selF&&selF!=="passed"?selF.t:null):(p.length?p[0].t:null), myDash=selB&&selF==="passed";
@@ -1852,20 +1805,18 @@ function renderStrip(model){
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, past=passedA>=0&&s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
     const dest=s.code===TO_STOP;
-    const rw=LO(loop?stripRow[i]:0);
-    h+=`<b class="sd${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
+    h+=`<b class="sd${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${waitTxt(myEta,true)}`:mine&&myDash?" · --":"");
-    if(shownL.has(i)) h+=`<span class="slab${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}${lensFar(i)?" far":""}" style="left:${SX(i)}%${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span${LAB_A[i]>40.5?` style="transform:rotate(${(stripRowLo(i)?1:-1)*LAB_A[i]}deg)"`:""}>${lab}</span></span>`;
+    if(shownL.has(i)) h+=`<span class="slab${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${lensFar(i)?" far":""}" style="left:${SX(i)}%${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span${LAB_A[i]>40.5?` style="transform:rotate(${(stripRowLo(i)?1:-1)*LAB_A[i]}deg)"`:""}>${lab}</span></span>`;
   });
   // destination
-  if(!loop) h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
+  h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
   // buses below the line: last fix (dot) and position now (pill)
 
   for(const b of model){
     const cls=(b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":"");
-    const pf=stripPos(b.along), pn=stripPos(busNowAlong(b));
-    h+=`<i class="sfix ${cls}${LO(pf.row)}" style="left:${pf.x}%"></i>`;
-    h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}${LO(pn.row)}" id="sb-${esc(b.ref)}" style="left:${pn.x}%">${busTagHtml(b,false)}</span>`;
+    h+=`<i class="sfix ${cls}" style="left:${stripX(b.along)}%"></i>`;
+    h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}" id="sb-${esc(b.ref)}" style="left:${stripX(busNowAlong(b))}%">${busTagHtml(b,false)}</span>`;
   }
   for(const t of upcomingTrips(model))  h+=`<span class="sbus up ${SX(0)<50?"upL":"upR"}" style="left:${SX(0)}%" title="scheduled, not on the road yet">${hm(t)}<small>dep</small></span>`;
   el.innerHTML=h; stackTags();
