@@ -269,7 +269,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v123";
+const VERSION="v124";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -368,9 +368,8 @@ async function loadLine(){
         if(rt.length){ ttDate=dd; ttShift=k; log(`no timetable for ${d} yet: using ${dd}, shifted ${k} day(s)`); break; } } }
     // no service today (e.g. Shabbat): use the next day that has it, with its real times (shown with the day name)
     NEXT_DAY="";
-    if(!rt.length){ for(let k=1;k<=3;k++){ const dd=dayIL(k);
-        rt=await getJSON("routes+"+k,`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dd}&date_to=${dd}&limit=50`);
-        if(rt.length){ ttDate=dd; NEXT_DAY=new Date(Date.now()+k*86400000).toLocaleDateString("en-GB",{weekday:"short",timeZone:TZ}); log(`no service today: next on ${dd}`); break; } } }
+    if(!rt.length){ for(let k=1;k<=3;k++){ const dd=dayIL(k), ra=await routesAhead(k); rt=ra.rt;
+        if(rt.length){ ttDate=dd; ttShift=ra.shift/86400000; NEXT_DAY=new Date(Date.now()+k*86400000).toLocaleDateString("en-GB",{weekday:"short",timeZone:TZ}); log(`no service today: next on ${dd}`); break; } } }
     routeOpts=rt;
     if(!REF){   // no direction/route chosen: if this number means several different lines, don't guess
       const lines=new Set(rt.map(r=>r.route_mkt||r.agency_name)), rec=recentLines().find(x=>String(x.line)===String(LINE)&&rt.some(r=>String(r.line_ref)===String(x.ref)));
@@ -641,16 +640,24 @@ async function loadRoad(){
 }
 
 // ---------- next service day (when today's buses are done) ----------
+// routes for day k ahead (k>=1). Stride holds a day's timetable only from that day on, so for future days use the same
+// weekday a week earlier and shift its times by 7 days. -> {rt, shift(ms)}
+async function routesAhead(k){
+  let rt=await getJSON("routes+"+k,`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dayIL(k)}&date_to=${dayIL(k)}&limit=50`);
+  if(rt.length) return {rt,shift:0};
+  rt=await getJSON("routes"+(k-7),`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dayIL(k-7)}&date_to=${dayIL(k-7)}&limit=50`);
+  return {rt,shift:7*86400000}; }
 let tomorrow=null;   // {first: ms of first departure, rides:[ms...]} or {none:true}
 async function loadTomorrow(){
   if(tomorrow||!REF) return; tomorrow={loading:true};
-  const d=new Date(Date.now()+86400000).toLocaleDateString("sv",{timeZone:TZ});
   try{
-    const rt=await getJSON("routes-tomorrow",`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${d}&date_to=${d}&limit=50`);
-    const refs=lineRefs(), rr=rt.filter(x=>refs.includes(x.line_ref)); if(!rr.length){tomorrow={none:true};render();return;}
-    const rs=[]; for(const r of rr) rs.push(...(await getJSON("rides-tomorrow",`${API}/gtfs_rides/list?gtfs_route_id=${r.id}&limit=200`)).map(x=>Date.parse(x.start_time)).filter(Number.isFinite));
-    rs.sort((a,b)=>a-b);
-    tomorrow=rs.length?{first:rs[0],rides:rs}:{none:true};
+    // the next day with service: tomorrow, or up to 3 days ahead (Friday evening -> Saturday night / Sunday)
+    for(let k=1;k<=3;k++){ const {rt,shift}=await routesAhead(k);
+      const refs=lineRefs(), rr=rt.filter(x=>refs.includes(x.line_ref)); if(!rr.length) continue;
+      const rs=[]; for(const r of rr) rs.push(...(await getJSON("rides+"+k,`${API}/gtfs_rides/list?gtfs_route_id=${r.id}&limit=200`)).map(x=>Date.parse(x.start_time)+shift).filter(Number.isFinite));
+      rs.sort((a,b)=>a-b);
+      if(rs.length){ tomorrow={first:rs[0],rides:rs,k,day:new Date(Date.now()+k*86400000).toLocaleDateString("en-GB",{weekday:"short",timeZone:TZ})}; break; } }
+    if(tomorrow.loading) tomorrow={none:true};
   }catch(e){ log("tomorrow lookup failed: "+e.message); tomorrow=null; }
   render();
 }
@@ -658,7 +665,7 @@ function nextServiceText(){
   if(!tomorrow||tomorrow.loading) { loadTomorrow(); return ""; }
   if(tomorrow.none) return "";
   const s=myStop(), t=tomorrow.first+(s&&Number.isFinite(s.off)?s.off*1000:0);
-  return `First bus tomorrow${s?" at your stop":""}: <b>${hm(t)}</b>`;
+  return `First bus ${tomorrow.k>1?"on "+tomorrow.day:"tomorrow"}${s?" at your stop":""}: <b>${hm(t)}</b>`;
 }
 
 // ---------- my stop ----------
@@ -1386,7 +1393,7 @@ function renderHero(model){
   if(!s){$("heroMin").textContent="–";$("heroTxt").textContent="";$("heroNext").textContent="";return;}
   const p=myStopPredictions(model);
   if(!p.length){ const loading=(refreshErr||!rides.length)&&!lastModel.length;
-    $("heroMin").textContent="–"; $("heroTxt").innerHTML=LINE_FAIL&&!rides.length?`Timetable server not responding. Retrying…`:loading?`Loading…`:`No more ${esc(title.num)} buses today.`;
+    $("heroMin").textContent="–"; $("heroTxt").innerHTML=LINE_FAIL&&!rides.length?`Timetable server not responding. Retrying…`:loading?`Loading…`:`No more ${esc(title.num)} buses today.${(t=>t?" "+t+".":"")(nextServiceText())}`;
     $("heroNext").innerHTML=loading?"":nextServiceText(); return; }   // (no "missed" note: nothing else to compare)
   const m=Math.max(0,Math.round((p[0].t-Date.now())/60000));
   $("heroMin").textContent=waitTxt(p[0].t);
