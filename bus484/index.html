@@ -282,7 +282,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v150"; window.__appStarted=true;
+const VERSION="v151"; window.__appStarted=true;
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1108,6 +1108,11 @@ const METHODS={ETA:"Ministry ETA",traffic:"Bus-traffic model",est:"Linear estima
 const ACC_KEY="acc:"+REF;
 let acc={}; try{acc=JSON.parse(load(ACC_KEY))||{};}catch(_){acc={};}
 const predLog=new Map(), passed=new Set();
+// a phone may keep the page open all day: forget bookkeeping older than 3 hours (every 10 minutes)
+setInterval(()=>{ const cutH=Math.round((Date.now()-3*3600e3)/1800000), cut=Date.now()-3*3600e3;
+  for(const k of passed){ if(+k.split("|").pop()<cutH) passed.delete(k); }
+  for(const [k,a] of predLog){ if(!a.length||a[a.length-1].at<cut) predLog.delete(k); }
+  for(const m of [rideStart,vehTrip,liveEta]) for(const k of m.keys()) if(!vehicles.has(k)) m.delete(k); },600000);
 function logPred(ref,code,m,t){
   if(!Number.isFinite(t)) return;
   const k=ref+"|"+code, now=Date.now(); if(!predLog.has(k)) predLog.set(k,[]);
