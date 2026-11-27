@@ -289,7 +289,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v155"; window.__appStarted=true;
+const VERSION="v156"; window.__appStarted=true;
 // The site now has HTTPS. http and https keep separate saved data, so an http visit moves this browser's saved stops,
 // recent lines and settings to https in the address (#mig=...) and continues there; https takes them in (never
 // overwriting) and cleans the address.
@@ -2201,19 +2201,23 @@ $("copyLog").addEventListener("click",()=>{const txt=$("ver").textContent+"\n"+L
 // my location (hidden until the page is served over HTTPS: browsers only give location to secure pages)
 if(!window.isSecureContext) $("btnMe").style.display="none";
 let meWatch=null, meCentered=false;
-$("btnMe").addEventListener("click",()=>{
+// the on/off choice is remembered across reloads (localStorage "meOn"); a restored watch doesn't re-centre the map
+const meSave=v=>{try{localStorage.setItem("meOn",v?"1":"0");}catch(_){}};
+function meStop(){const btn=$("btnMe");if(meWatch!==null)navigator.geolocation.clearWatch(meWatch);meWatch=null;ME=null;btn.classList.remove("on");HAVE_MAP&&meLayer.clearLayers();renderStrip(lastModel||[]);}
+function meStart(restored){
   const btn=$("btnMe");
-  if(meWatch!==null){navigator.geolocation.clearWatch(meWatch);meWatch=null;ME=null;btn.classList.remove("on");HAVE_MAP&&meLayer.clearLayers();renderStrip(lastModel||[]);return;}
-  if(!window.isSecureContext){toast("Your location isn't available on this page");log("location blocked: not a secure context");return;}
-  if(!navigator.geolocation){toast("No location support");return;}
-  btn.classList.add("on");meCentered=false;
+  if(!window.isSecureContext){if(!restored)toast("Your location isn't available on this page");log("location blocked: not a secure context");return;}
+  if(!navigator.geolocation){if(!restored)toast("No location support");return;}
+  btn.classList.add("on");meCentered=!!restored;
   meWatch=navigator.geolocation.watchPosition(p=>{const la=p.coords.latitude,lo=p.coords.longitude; ME={lat:la,lon:lo,acc:p.coords.accuracy}; renderStrip(lastModel||[]);
     if(HAVE_MAP){meLayer.clearLayers();L.circle([la,lo],{radius:p.coords.accuracy,color:"#1a73e8",weight:1,fillOpacity:.1}).addTo(meLayer);
       L.marker([la,lo],{icon:L.divIcon({className:"",iconSize:[16,16],iconAnchor:[8,8],html:'<div class="medot"></div>'})}).addTo(meLayer);
       if(!meCentered){map.setView([la,lo],14);meCentered=true;}}
     if(!myStop()&&stops.length){let n=stops[0],nd=Infinity;for(const s of stops){const d=dist(la,lo,s.lat,s.lon);if(d<nd){nd=d;n=s;}} if(nd<400) setMyStop(n.code);}
-  },e=>{toast("Location: "+e.message);btn.classList.remove("on");meWatch=null;ME=null;renderStrip(lastModel||[]);},{enableHighAccuracy:true,maximumAge:10000,timeout:30000});
-});
+  },e=>{toast("Location: "+e.message);if(e.code===1)meSave(false);btn.classList.remove("on");meWatch=null;ME=null;renderStrip(lastModel||[]);},{enableHighAccuracy:true,maximumAge:10000,timeout:30000});
+}
+$("btnMe").addEventListener("click",()=>{ if(meWatch!==null){meStop();meSave(false);} else {meSave(true);meStart(false);} });
+try{ if(localStorage.getItem("meOn")==="1") meStart(true); }catch(_){}
 
 // ---------- start ----------
 setSheet(0);   // start minimal: most of the screen for the map
