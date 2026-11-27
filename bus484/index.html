@@ -268,7 +268,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v111";
+const VERSION="v112";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1520,7 +1520,7 @@ function lensX(x){ return lensGen(x,stripLo,stripHi); }
 // pile-ups). M adapts to the local spacing: just enough for ~LENS_TARGET px between stations, 1 (no lens) where they
 // already are that far apart (wide screens, sparse lines).
 const LENS_CORE=30, LENS_WIN=150, LENS_TARGET=44, LENS_MMAX=3.5, LENS_QMIN=0.45;
-let lensGainF=null, lensGainV=1;
+let lensGainF=null, lensGainV=1, lensSpread=1;   // lensSpread: >1 while the lens disperses on release
 function lensUnits(){ const loop=LOOPK>=0&&LG; return {loop, ppu:loop?1:($("stripIn").clientWidth||360)/100}; }
 function lensMag(){   // wanted magnification at the finger
   if(lensGainF===lensF) return lensGainV; lensGainF=lensF;
@@ -1532,7 +1532,7 @@ function lensMag(){   // wanted magnification at the finger
 function lensGen(x,lo,hi){
   if(lensK<=0||!stripX0||x<=lo||x>=hi) return x;
   const M0=lensMag(); if(M0<=1) return x;
-  const {ppu}=lensUnits(), c=LENS_CORE/ppu, w=Math.min(LENS_WIN/ppu,(hi-lo)/2), f=Math.max(lo,Math.min(hi,lensF));
+  const {ppu}=lensUnits(), c=LENS_CORE*lensSpread/ppu, w=Math.min(LENS_WIN*lensSpread/ppu,(hi-lo)/2), f=Math.max(lo,Math.min(hi,lensF));
   let a=f-w, b=f+w; if(a<lo){b+=lo-a;a=lo;} if(b>hi){a-=b-hi;b=hi;} a=Math.max(lo,a);   // slide the window inside the line
   if(x<=a||x>=b) return x;
   const c0=Math.max(a,f-c), c1=Math.min(b,f+c), C=c1-c0, rest=(b-a)-C; if(C<=0) return x;
@@ -1542,7 +1542,7 @@ function lensGen(x,lo,hi){
   return a+t; }
 // while the lens is on, names away from the finger fade, so the magnified ones read clearly
 function lensFar(i){ if(lensK<=0||lensMag()<=1) return false; const {loop,ppu}=lensUnits(); const x=loop?loopP(stripU[i]):stripX0[i];
-  return Math.abs(x-lensF)*ppu>LENS_CORE*1.6; }
+  return Math.abs(x-lensF)*ppu>LENS_CORE*lensSpread*1.6; }
 const SX=i=>LOOPK>=0&&LG?loopAt(stripU[i]).x/LG.W*100:lensX(stripX0[i]);       // station position on screen (%), lens applied
 function stripX(a){ return LOOPK>=0&&stripU?stripPos(a).x:lensX(stripXraw(a)); }
 function stripPos(a){ if(LOOPK<0||!LG) return {x:lensX(stripXraw(a)),row:0};
@@ -1848,7 +1848,7 @@ function setLensTarget(f,jump){ lensFT=f;
   if(!lensFRaf){ lensFPrev=0; lensFRaf=requestAnimationFrame(function step(now){ const dt=Math.min(64,now-(lensFPrev||now-16)); lensFPrev=now;
     lensF+=(lensFT-lensF)*(1-Math.exp(-dt/60)); if(Math.abs(lensFT-lensF)<0.05) lensF=lensFT;
     renderStrip(lastModel||[]); lensMap(); lensFRaf=lensF===lensFT?0:requestAnimationFrame(step); }); } }
-const LENS_SETTLE_MS=630;   // lens settling back to normal
+const LENS_SETTLE_MS=630, LENS_DIFF_T=0.08;   // lens settling back to normal; diffusion time scale (width x2 after 0.24 s)
 const smootherstep=t=>t*t*t*(t*(t*6-15)+10);   // Perlin: zero speed and zero acceleration at both ends
 const easeOut=t=>1-Math.pow(1-t,3), easeInOut=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
 // ---- the map follows the lens: it frames the stretch of route under the magnified part (outlined), following the
@@ -1861,24 +1861,16 @@ function lensWindowAlong(){
   const idx=stops.map((_,i)=>i).filter(i=>Math.abs(xs[i]-lensF)<=w);
   if(idx.length<2){ const o=stops.map((_,i)=>i).sort((a,b)=>Math.abs(xs[a]-lensF)-Math.abs(xs[b]-lensF)); idx.splice(0,idx.length,o[0],o[1]); }
   return [stops[Math.min(...idx)].along,stops[Math.max(...idx)].along]; }
-// Panning moves the existing map image (tiles stay); zooming uses Leaflet's own animated zoom, which keeps the old
-// tiles scaled until the new ones arrive. (A non-animated setView with a new zoom throws all tiles away: that blanked
-// the map while dragging.) Pan: per-frame exponential smoothing. Zoom: quarter steps, one animated step at a time.
-let lensZoomAt=0;
 function lensMapStep(now){
   lensMapRaf=0; if(!lensMapTgt||!HAVE_MAP) return;
   const dt=Math.min(64,now-(lensMapPrevT||now-16)); lensMapPrevT=now;
-  const a=1-Math.exp(-dt/LENS_MAP_TAU), t=lensMapTgt, anim=!!map._animatingZoom;
-  let panLeft=0;
-  if(!anim){ const p0=map.latLngToContainerPoint(map.getCenter()), p1=map.latLngToContainerPoint(t.c), d=p1.subtract(p0); panLeft=d.distanceTo(L.point(0,0));
-    if(panLeft>=0.5){ lensMapProg=true; map.panBy(d.multiplyBy(a),{animate:false}); lensMapProg=false; } }
-  const dz=t.z-map.getZoom();
-  if(!anim&&Math.abs(dz)>=0.25&&now-lensZoomAt>300){ lensZoomAt=now;
-    const step=Math.max(-1,Math.min(1,Math.round(dz*0.6*4)/4||Math.sign(dz)*0.25));
-    lensMapProg=true; map.setZoomAround(map.getSize().divideBy(2),map.getZoom()+step,{animate:true}); setTimeout(()=>{lensMapProg=false;},300); }
-  if(!anim&&panLeft<0.5&&Math.abs(dz)<0.25){ lensMapTgt=null; lensMapBack=false; return; }
+  const a=1-Math.exp(-dt/LENS_MAP_TAU), c=map.getCenter(), z=map.getZoom(), t=lensMapTgt;
+  const nz=z+(t.z-z)*a, nlat=c.lat+(t.c.lat-c.lat)*a, nlng=c.lng+(t.c.lng-c.lng)*a;
+  const done=Math.abs(t.z-nz)<0.01&&map.latLngToContainerPoint(t.c).distanceTo(map.latLngToContainerPoint([nlat,nlng]))<0.5;
+  lensMapProg=true; map.setView(done?t.c:[nlat,nlng],done?t.z:nz,{animate:false}); lensMapProg=false;
+  if(done){ lensMapTgt=null; if(lensMapBack){ lensMapBack=false; map.options.zoomSnap=.25; } return; }
   lensMapRaf=requestAnimationFrame(lensMapStep); }
-function lensMapGo(c,z){ lensMapTgt={c:L.latLng(c),z};
+function lensMapGo(c,z){ lensMapTgt={c:L.latLng(c),z}; map.options.zoomSnap=0;   // fractional zoom while gliding
   if(!lensMapRaf){ lensMapPrevT=0; lensMapRaf=requestAnimationFrame(lensMapStep); } }
 function lensMap(){
   if(!HAVE_MAP||!stripX0||routePts.length<2) return;
@@ -1890,9 +1882,10 @@ function lensMap(){
   lensMapGo(cz.center,Math.min(LENS_MAP_MAXZ,cz.zoom)); }
 function lensMapEnd(){
   if(lensHi){ lensHi.remove(); lensHi=null; }
-  // the map stays where the lens took it (no jump back); a glide in progress just finishes
+  // the map stays where the lens took it (no jump back): let a glide in progress finish, then snap to quarter zooms again
+  if(!lensMapTgt) map.options.zoomSnap=.25; else lensMapBack=true;
   lensMapSaved=null; }
-if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ lensMapUser=true; lensMapTgt=null; } });
+if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ lensMapUser=true; lensMapTgt=null; map.options.zoomSnap=.25; } });
 (function lens(){   // tap = pick a station; press-and-hold or slide = fisheye lens (keeps the finger for the whole touch).
   // On release the lens stays open ("parked") so a second tap can pick a station among the spread-out ones; a new slide
   // moves it again; a tap on empty strip, picking a station, or 2.5 s without touching closes it.
@@ -1904,10 +1897,12 @@ if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ 
     return LOOPK>=0&&LG?loopProj(x-r.left,y-r.top):p; };
   const startLens=()=>{ if(lensOn||!down) return; lensOn=true; clearTimeout(holdT); cancelAnimationFrame(lensAnim);
     setLensTarget(at(lastX,lastY),!parked&&lensK<=0); el.classList.add("lensing");
-    const s0=performance.now(), k0=lensK; const grow=now=>{ const t=Math.min(1,(now-s0)/180); lensK=k0+(1-k0)*easeOut(t); ask(); lensMap(); if(t>=1) lensK=1; if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); };
+    const s0=performance.now(), k0=lensK; lensSpread=1; const grow=now=>{ const t=Math.min(1,(now-s0)/180); lensK=k0+(1-k0)*easeOut(t); ask(); lensMap(); if(t>=1) lensK=1; if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); };
     lensAnim=requestAnimationFrame(grow); };
   const closeLens=()=>{ parked=false; clearTimeout(parkT); lensOn=false; cancelAnimationFrame(lensAnim);
-    const s0=performance.now(), k0=lensK; const shrink=now=>{ const t=Math.min(1,(now-s0)/LENS_SETTLE_MS); lensK=t>=1?0:k0*(1-smootherstep(t)); ask();   /* sigmoid (Perlin's smootherstep): starts from rest, speeds up, settles to rest */
+    const s0=performance.now(), k0=lensK; const shrink=now=>{ const t=(now-s0)/1000, u=Math.min(1,t*1000/LENS_SETTLE_MS), sp=Math.sqrt(1+t/LENS_DIFF_T);
+      // disperses like a diffusing bump: it widens as sqrt(t) and flattens as 1/width (spacing conserved), and fades out
+      lensSpread=u>=1?1:sp; lensK=u>=1?0:k0*(1-smootherstep(u))/sp; ask();
       if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); };
     lensAnim=requestAnimationFrame(shrink); lensMapEnd(); };
   let tagRef=null;
