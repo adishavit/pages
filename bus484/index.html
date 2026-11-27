@@ -56,6 +56,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 .slab.mine>span{background:#ffcf33;color:#000;font-weight:700;border-radius:3px}
 .sgap,.sarr{position:absolute;top:58px;transform:translateX(-50%);font-size:11px;color:var(--mut);background:var(--bg);padding:0 3px;white-space:nowrap}
 .sarr{font-size:9px;top:46px;background:none;opacity:.7}
+.lchev{position:absolute;top:52px;width:10px;height:10px;overflow:visible;pointer-events:none;z-index:1}
+.lchev path{fill:none;stroke:#fff;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.95}
+.lchev.past path{stroke:#666;opacity:.8}.lchev.nodata path{stroke:var(--acc);opacity:1}
 .sdest{position:absolute;right:0;top:58px;font-size:11px;font-weight:600;color:var(--acc);direction:rtl;unicode-bidi:isolate}
 .sdest.l{right:auto;left:0}
 .sfix{position:absolute;top:52px;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--str);z-index:3}
@@ -270,7 +273,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v129";
+const VERSION="v130";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1748,7 +1751,9 @@ function renderStrip(model){
         h+=`<i class="sl${q.lv===2?" jam":q.lv===1?" slow":""}${q.past?" past":""}${LO(rowSeg)}" style="left:${g.l}%;width:${g.w}%;background:${bg};${q.lv==null&&!q.past?"opacity:.5;":""}"></i>`; }
     }
     const gx=Math.abs(SX(i+1)-SX(i));
-    if(gx>7&&!rowSeg) h+=`<span class="sarr${LO(rowSeg)}" aria-hidden="true" style="left:${(SX(i)+SX(i+1))/2}%">${(stripFlip!==(rowSeg===1))?"◀":"▶"}</span>`;
+    if(gx>7&&!rowSeg){   // direction: the same chevron on the track as on the folded strip and the map
+      const A=stops[i].along,B=stops[i+1].along, k=prof?Math.floor(((A+B)/2)/prof.C):-1, lv=prof&&k<prof.n?cellLevel(k):null;
+      h+=`<svg class="lchev${B<=passedA?" past":lv==null?" nodata":""}" aria-hidden="true" viewBox="-5 -5 10 10" style="left:${(SX(i)+SX(i+1))/2}%;transform:translate(-50%,-50%)${stripFlip?" rotate(180deg)":""}"><path d="M-1.8 -2.4 L1.4 0 L-1.8 2.4"/></svg>`; }
   }
   // remaining travel time of the followed bus to my getting-off stop (our estimate), between the bus and that stop
   { const t=toStop();
