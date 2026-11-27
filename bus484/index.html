@@ -182,6 +182,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 .far .stoplbl.n{display:none}
 .hot{position:absolute;transform:translate(-50%,-50%);font-size:20px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
 .seg{position:absolute;left:24px;width:4px;top:50%;height:100%;z-index:1;opacity:.95}
+.smedot{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;box-sizing:border-box;border-radius:50%;background:#1a73e8;border:2px solid #fff;box-shadow:0 0 3px #000;z-index:6;pointer-events:none}
 .medot{width:16px;height:16px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 4px #000}
 /* banners & toast */
 #upd{display:none;position:absolute;z-index:1002;top:calc(56px + env(safe-area-inset-top));left:8px;right:8px;background:#fff3cd;color:#000;border:1px solid #c90;border-radius:10px;padding:8px 10px;font-size:13px}
@@ -282,7 +283,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v153"; window.__appStarted=true;
+const VERSION="v154"; window.__appStarted=true;
 // The site now has HTTPS. http and https keep separate saved data, so an http visit moves this browser's saved stops,
 // recent lines and settings to https in the address (#mig=...) and continues there; https takes them in (never
 // overwriting) and cleans the address.
@@ -1845,11 +1846,17 @@ function renderStrip(model){
     h+=`<i class="sfix ${cls}" style="left:${stripX(b.along)}%"></i>`;
     h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}" id="sb-${esc(b.ref)}" style="left:${stripX(busNowAlong(b))}%">${busTagHtml(b,false)}</span>`;
   }
+  { const a=meAlong(); if(a!=null) h+=`<i class="smedot" style="left:${stripX(a)}%;top:52px" title="You are here"></i>`; }
   for(const t of upcomingTrips(model))  h+=`<span class="sbus up ${SX(0)<50?"upL":"upR"}" style="left:${SX(0)}%" title="scheduled, not on the road yet">${hm(t)}<small>dep</small></span>`;
   el.innerHTML=h; stackTags();
 }
 // the next scheduled departures that no bus on the road matches yet (Stride lists a trip only ~5 min before it leaves):
 // up to 2 within the next hour, as hollow tags at the first station
+// my location on the strip (when location is on): same blue dot as on the map, where I am along the route
+// (nearest point of the road; only if within 300 m of it, or within the GPS accuracy)
+let ME=null;
+function meAlong(){ if(!ME||routePts.length<2) return null; const c=snapCands(ME.lat,ME.lon); if(!c.length) return null;
+  const b=c.reduce((m,x)=>x.d<m.d?x:m); return b.d<=Math.max(300,ME.acc||0)?b.along:null; }
 function upcomingTrips(model){
   const now=Date.now(), have=model.map(b=>b.start).filter(x=>x!=null);
   return rides.map(r=>Date.parse(r.start_time)).filter(t=>Number.isFinite(t)&&t>now-60000&&t<=now+3600000&&!have.some(h=>Math.abs(h-t)<90000))
@@ -1913,6 +1920,7 @@ function renderLoopStrip(model){
     h+=`<i class="sfix ${cls}" style="left:${pc(f.x)}%;top:${f.y}px"></i>`;
     h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}${n.lo?" lo":""}" id="sb-${esc(b.ref)}" data-y="${n.y}" style="left:${pc(n.x)}%">${busTagHtml(b,false)}</span>`;
   }
+  { const a=meAlong(); if(a!=null){ const q=loopAt(stripUraw(a)); h+=`<i class="smedot" style="left:${pc(q.x)}%;top:${q.y}px" title="You are here"></i>`; } }
   { const q=loopAt(0); for(const t of upcomingTrips(model)) h+=`<span class="sbus up ${pc(q.x)<50?"upL":"upR"}" data-y="${q.y}" style="left:${pc(q.x)}%" title="scheduled, not on the road yet">${hm(t)}<small>dep</small></span>`; }
   el.innerHTML=`<svg class="strk" width="${G.W}" height="240" aria-hidden="true">${svg}${chev}</svg>`+h; stackTags();
 }
@@ -2189,16 +2197,16 @@ if(!window.isSecureContext) $("btnMe").style.display="none";
 let meWatch=null, meCentered=false;
 $("btnMe").addEventListener("click",()=>{
   const btn=$("btnMe");
-  if(meWatch!==null){navigator.geolocation.clearWatch(meWatch);meWatch=null;btn.classList.remove("on");HAVE_MAP&&meLayer.clearLayers();return;}
+  if(meWatch!==null){navigator.geolocation.clearWatch(meWatch);meWatch=null;ME=null;btn.classList.remove("on");HAVE_MAP&&meLayer.clearLayers();renderStrip(lastModel||[]);return;}
   if(!window.isSecureContext){toast("Your location isn't available on this page");log("location blocked: not a secure context");return;}
   if(!navigator.geolocation){toast("No location support");return;}
   btn.classList.add("on");meCentered=false;
-  meWatch=navigator.geolocation.watchPosition(p=>{const la=p.coords.latitude,lo=p.coords.longitude;
+  meWatch=navigator.geolocation.watchPosition(p=>{const la=p.coords.latitude,lo=p.coords.longitude; ME={lat:la,lon:lo,acc:p.coords.accuracy}; renderStrip(lastModel||[]);
     if(HAVE_MAP){meLayer.clearLayers();L.circle([la,lo],{radius:p.coords.accuracy,color:"#1a73e8",weight:1,fillOpacity:.1}).addTo(meLayer);
       L.marker([la,lo],{icon:L.divIcon({className:"",iconSize:[16,16],iconAnchor:[8,8],html:'<div class="medot"></div>'})}).addTo(meLayer);
       if(!meCentered){map.setView([la,lo],14);meCentered=true;}}
     if(!myStop()&&stops.length){let n=stops[0],nd=Infinity;for(const s of stops){const d=dist(la,lo,s.lat,s.lon);if(d<nd){nd=d;n=s;}} if(nd<400) setMyStop(n.code);}
-  },e=>{toast("Location: "+e.message);btn.classList.remove("on");meWatch=null;},{enableHighAccuracy:true,maximumAge:10000,timeout:30000});
+  },e=>{toast("Location: "+e.message);btn.classList.remove("on");meWatch=null;ME=null;renderStrip(lastModel||[]);},{enableHighAccuracy:true,maximumAge:10000,timeout:30000});
 });
 
 // ---------- start ----------
