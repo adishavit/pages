@@ -287,7 +287,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v145"; window.__appStarted=true;
+const VERSION="v146"; window.__appStarted=true;
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -2220,7 +2220,7 @@ $("btnMe").addEventListener("click",()=>{
 });
 
 // ---------- start ----------
-setSheet(1);
+setSheet(0);   // start minimal: most of the screen for the map
 // the normal (Glance) height is measured from the content, which isn't there yet at start: re-fit as it arrives,
 // until the user moves the panel
 let sheetTouched=false; addEventListener("pointerdown",e=>{ if(e.target.closest&&e.target.closest("#grab,#hero")) sheetTouched=true; },true);
