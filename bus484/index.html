@@ -268,7 +268,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v104";
+const VERSION="v105";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1851,7 +1851,7 @@ function setLensTarget(f,jump){ lensFT=f;
 const easeOut=t=>1-Math.pow(1-t,3), easeInOut=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
 // ---- the map follows the lens: it frames the stretch of route under the magnified part (outlined), following the
 // finger smoothly (per-frame exponential smoothing of centre and zoom = a natural ease-out that never stops and restarts),
-// and glides back to where it was when the lens closes, unless the user moved the map meanwhile ----
+// and stays there when the lens closes ----
 let lensMapSaved=null, lensMapUser=false, lensMapProg=false, lensHi=null, lensMapTgt=null, lensMapRaf=0, lensMapPrevT=0, lensMapBack=false;
 const LENS_MAP_SPAN=75, LENS_MAP_TAU=140, LENS_MAP_MAXZ=17;   // px of strip each side framed; smoothing time constant (ms)
 function lensWindowAlong(){
@@ -1880,8 +1880,8 @@ function lensMap(){
   lensMapGo(cz.center,Math.min(LENS_MAP_MAXZ,cz.zoom)); }
 function lensMapEnd(){
   if(lensHi){ lensHi.remove(); lensHi=null; }
-  if(lensMapSaved&&!lensMapUser&&HAVE_MAP){ lensMapBack=true; lensMapGo(lensMapSaved.c,lensMapSaved.z); }
-  else { lensMapTgt=null; map.options.zoomSnap=.25; }
+  // the map stays where the lens took it (no jump back): let a glide in progress finish, then snap to quarter zooms again
+  if(!lensMapTgt) map.options.zoomSnap=.25; else lensMapBack=true;
   lensMapSaved=null; }
 if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ lensMapUser=true; lensMapTgt=null; map.options.zoomSnap=.25; } });
 (function lens(){   // tap = pick a station; press-and-hold or slide = fisheye lens (keeps the finger for the whole touch).
