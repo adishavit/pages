@@ -268,7 +268,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v106";
+const VERSION="v107";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1898,7 +1898,7 @@ if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ 
     const s0=performance.now(), k0=lensK; const grow=now=>{ const t=Math.min(1,(now-s0)/180); lensK=k0+(1-k0)*easeOut(t); ask(); lensMap(); if(t>=1) lensK=1; if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); };
     lensAnim=requestAnimationFrame(grow); };
   const closeLens=()=>{ parked=false; clearTimeout(parkT); lensOn=false; cancelAnimationFrame(lensAnim);
-    const s0=performance.now(), k0=lensK; const shrink=now=>{ const t=Math.min(1,(now-s0)/290); lensK=t>=1?0:k0*(1-easeInOut(t));   // gentle start and end ask();
+    const s0=performance.now(), k0=lensK; const shrink=now=>{ const t=Math.min(1,(now-s0)/320); lensK=t>=1?0:k0*Math.pow(1-t,4); ask();   /* ease-out quart over 320 ms: starts as fast as before (cubic/240 ms), settles more gently */
       if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); };
     lensAnim=requestAnimationFrame(shrink); lensMapEnd(); };
   let tagRef=null;
