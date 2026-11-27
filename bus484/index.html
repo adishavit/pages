@@ -268,7 +268,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v114";
+const VERSION="v115";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1890,6 +1890,10 @@ function lensMapEnd(){
   if(!lensMapTgt) map.options.zoomSnap=.25; else lensMapBack=true;
   lensMapSaved=null; }
 if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ lensMapUser=true; lensMapTgt=null; map.options.zoomSnap=.25; } });
+function stationAt(cx,cy,filter){ const r=$("stripIn").getBoundingClientRect(), fx=cx-r.left, fy=cy-r.top; let bi=-1,bd=Infinity;
+  stops.forEach((st,i)=>{ if(filter&&!filter(i)) return; let d;
+    if(LOOPK>=0&&LG){ const q=loopAt(stripU[i]); d=Math.hypot(q.x-fx,(q.y-fy)*1.5); } else d=Math.abs(SX(i)*r.width/100-fx);
+    if(d<bd){bd=d;bi=i;} }); return {i:bi,d:bd}; }
 (function lens(){   // tap = pick a station; press-and-hold or slide = fisheye lens (keeps the finger for the whole touch).
   // On release the lens stays open ("parked") so a second tap can pick a station among the spread-out ones; a new slide
   // moves it again; a tap on empty strip, picking a station, or 2.5 s without touching closes it.
@@ -1909,15 +1913,28 @@ if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ 
       lensSpread=u>=1?1:1-0.4*e; lensK=u>=1?0:k0*(1-e); ask();
       if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); };
     lensAnim=requestAnimationFrame(shrink); lensMapEnd(); };
-  let tagRef=null;
+  let tagRef=null, dragSel=null;
   el.addEventListener("pointerdown",e=>{ clearTimeout(parkT); down=true; moved=false; lensOn=false; x0=lastX=e.clientX; y0=lastY=e.clientY;
     const tg=e.target.closest&&e.target.closest(".sbus"); tagRef=tg?tg.id.replace(/^sb-/,""):null;
+    // press on (or within 18 px of) my From / To station: drag it along the line
+    dragSel=null; if(!tagRef){ const h=stationAt(e.clientX,e.clientY); const c=h.i>=0&&h.d<=18?stops[h.i].code:null;
+      if(c&&c===MY_STOP) dragSel={kind:"from",orig:c}; else if(c&&c===TO_STOP) dragSel={kind:"to",orig:c}; }
     try{ el.setPointerCapture(e.pointerId); }catch(_){}
     holdT=setTimeout(startLens,180); e.preventDefault(); });
   el.addEventListener("pointermove",e=>{ if(!down) return; lastX=e.clientX; lastY=e.clientY;
     if(!moved&&Math.hypot(e.clientX-x0,e.clientY-y0)>6){ moved=true; startLens(); }
-    if(lensOn){ setLensTarget(at(e.clientX,e.clientY)); } });
+    if(lensOn){ setLensTarget(at(e.clientX,e.clientY)); }
+    if(dragSel&&moved){   // the station follows the finger, snapping to stations; From stays before To and vice versa
+      const fi=stops.findIndex(x=>x.code===MY_STOP), ti=stops.findIndex(x=>x.code===TO_STOP);
+      const ok=dragSel.kind==="from"?(i=>ti<0||i<ti):(i=>i>fi);
+      const h=stationAt(e.clientX,e.clientY,ok); if(h.i>=0){ const c=stops[h.i].code;
+        if(dragSel.kind==="from"&&c!==MY_STOP){ MY_STOP=c; ask(); } else if(dragSel.kind==="to"&&c!==TO_STOP){ TO_STOP=c; ask(); } } } });
   const release=e=>{ if(!down) return; down=false; clearTimeout(holdT); try{ el.releasePointerCapture(e.pointerId); }catch(_){}
+    if(dragSel&&moved){ const d=dragSel; dragSel=null;   // commit the dragged station (or put it back on cancel)
+      if(e.type!=="pointerup"){ if(d.kind==="from") MY_STOP=d.orig; else TO_STOP=d.orig; ask(); }
+      else if(d.kind==="from"&&MY_STOP!==d.orig) setMyStop(MY_STOP); else if(d.kind==="to"&&TO_STOP!==d.orig) setToStop(TO_STOP);
+      lensOn=false; parked=true; cancelAnimationFrame(lensAnim); clearTimeout(parkT); parkT=setTimeout(closeLens,2500); return; }
+    dragSel=null;
     if(!lensOn){   // quick tap: a bus tag selects that bus; elsewhere the nearest station (in the lens if it's open)
       const wasParked=parked;
       if(e.type==="pointerup"&&tagRef){ selectBus(tagRef); if(wasParked) closeLens(); return; }
