@@ -269,7 +269,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v121";
+const VERSION="v122";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1961,6 +1961,12 @@ function stationAt(cx,cy,filter){ const r=$("stripIn").getBoundingClientRect(), 
   stops.forEach((st,i)=>{ if(filter&&!filter(i)) return; let d;
     if(LOOPK>=0&&LG){ const q=loopAt(stripU[i]); d=Math.hypot(q.x-fx,(q.y-fy)*1.5); } else d=Math.abs(SX(i)*r.width/100-fx);
     if(d<bd){bd=d;bi=i;} }); return {i:bi,d:bd}; }
+// screen size changed (rotation, split view, browser bars): the strip's track is drawn in pixels, so redraw it and
+// re-fit the panel. (Without this the track kept its old width after rotating while the stations, in %, stretched.)
+{ let rzT=0, lastW=0; const onResize=()=>{ clearTimeout(rzT); rzT=setTimeout(()=>{ const w=$("stripIn").clientWidth;
+    if(w!==lastW){ lastW=w; labWc.clear(); renderStrip(lastModel||[]); } setSheet(sheetIdx); if(HAVE_MAP) map.invalidateSize(); },120); };
+  addEventListener("resize",onResize); addEventListener("orientationchange",onResize);
+  if(window.visualViewport) visualViewport.addEventListener("resize",onResize); }
 (function lens(){   // tap = pick a station; press-and-hold or slide = fisheye lens (keeps the finger for the whole touch).
   // On release the lens stays open ("parked") so a second tap can pick a station among the spread-out ones; a new slide
   // moves it again; a tap on empty strip, picking a station, or 2.5 s without touching closes it.
