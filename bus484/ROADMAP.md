@@ -104,3 +104,20 @@ Findings:
 - Relay v7 is written (tools/curlbus-relay-worker.js) but needs a manual paste into Cloudflare.
 - Perf: cache the timetable and stop lookups per day (7 requests per load); a single relay call for all traffic probes.
 - #14 saved line+stop pairs; Hebrew wording on the board; #5 ETA ranges once Diagnostics has ~30 samples per column.
+
+## Deferred: rename to "Pluribus" + own repo (decided 2026-11-27)
+- New repo `adishavit/pluribus` with GitHub Pages → served at `videocortex.io/pluribus/` (project repos inherit the
+  user site's custom domain, as `pages` does today). Same origin, so localStorage (saved stops, recent lines, traffic
+  cache) carries over; no migration needed.
+- Rename in the app: `<title>`, header/About text, manifest/home-screen name if any. Keep `bus484/` as a redirect
+  stub (meta refresh + JS that keeps the query string) so bookmarks and home-screen icons keep working.
+- Name clash to accept: Apple TV+ series "Pluribus" (2025) dominates search results.
+- HTTPS is a separate fix (domain level, not repo level): see below.
+
+## HTTPS for videocortex.io (user action)
+- Moving to its own repo does NOT change HTTPS: every repo under videocortex.io shares the domain's certificate.
+- Fix: DNS of videocortex.io must point only to GitHub Pages (apex A 185.199.108–111.153, optional AAAA,
+  `www` CNAME → adishavit.github.io; no extra/parking A records, no CAA blocking Let's Encrypt), then
+  adishavit.github.io repo → Settings → Pages → Enforce HTTPS (cert can take up to 24 h).
+- Unblocks: geolocation ("nearest stop" pin, hidden today), service worker/offline, PWA install.
+- Does not by itself fix the live relay being blocked on some networks (that's the workers.dev domain).
