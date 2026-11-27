@@ -269,7 +269,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v127";
+const VERSION="v128";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -622,7 +622,7 @@ function drawStops(){
       .on("click",()=>tapStation(s.code)).addTo(stopLayer);
     stopMarks.push({i,m:stopLayer.getLayers()[stopLayer.getLayers().length-1]});
   });
-  if(!fitted&&stops.length){fitRoute();fitted=true;}
+  if(!fitted&&stops.length){ if(!window.MAP_CARRY) fitRoute(); fitted=true; }   // switched direction/line: keep the map exactly where it was
   declutterMap();
 }
 // map labels mirror the strip: a name left out on the strip is left out on the map too (one decision, made where
