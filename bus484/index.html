@@ -273,7 +273,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v134";
+const VERSION="v135";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -2011,10 +2011,13 @@ function setSheet(i){ sheetIdx=Math.max(0,Math.min(3,i)); $("sheet").classList.t
   const h=SNAP()[sheetIdx]; document.documentElement.style.setProperty("--h",h+"px"); }
 (function drag(){
   const sh=$("sheet"); let y0=null,h0=0,moved=false;
-  const down=e=>{y0=e.clientY;h0=sh.getBoundingClientRect().height;moved=false;sh.classList.add("drag");e.target.setPointerCapture&&e.target.setPointerCapture(e.pointerId);};
+  // snap heights are measured once per drag: the Glance height depends on the layout, which changes when the panel
+  // switches to Peek, so measuring during the drag made the strip jump back and forth (flicker)
+  let snaps=null;
+  const down=e=>{y0=e.clientY;h0=sh.getBoundingClientRect().height;moved=false;snaps=SNAP();sh.classList.add("drag");e.target.setPointerCapture&&e.target.setPointerCapture(e.pointerId);};
   const move=e=>{if(y0==null)return;const dy=y0-e.clientY;if(Math.abs(dy)>4)moved=true;
-    const nh=Math.max(90,Math.min(vh()-60,h0+dy)); $("sheet").classList.toggle("peek",nh<SNAP()[1]-40); document.documentElement.style.setProperty("--h",nh+"px");};
-  const up=e=>{if(y0==null)return;sh.classList.remove("drag");const h=sh.getBoundingClientRect().height,s=SNAP();
+    const nh=Math.max(90,Math.min(vh()-60,h0+dy)); $("sheet").classList.toggle("peek",nh<snaps[1]-40); document.documentElement.style.setProperty("--h",nh+"px");};
+  const up=e=>{if(y0==null)return;sh.classList.remove("drag");const h=sh.getBoundingClientRect().height,s=snaps||SNAP();
     if(!moved){setSheet((sheetIdx+1)%3);}else{let bi=0;s.forEach((v,i)=>{if(Math.abs(v-h)<Math.abs(s[bi]-h))bi=i;});setSheet(bi);}y0=null;};   // tap cycles Peek → Glance → Half
   for(const id of ["grab","hero"]){const el=$(id);el.addEventListener("pointerdown",down);el.addEventListener("pointermove",move);el.addEventListener("pointerup",up);el.addEventListener("pointercancel",up);}
 })();
