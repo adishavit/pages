@@ -7,7 +7,7 @@
 <title>Live bus tracker</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css'">
 <style>
-:root{--bg:#fff;--fg:#1b1b1f;--mut:#6b6f76;--line:#e6e7ea;--card:#f6f7f9;--acc:#1565c0;--live:#2e7d32;--str:#d32f2f;--old:#9aa0a6;--warn:#b26a00;--late:#c62828;--ok:#2e7d32;--sheet-shadow:0 -6px 24px rgba(0,0,0,.18)}
+:root{--ease-out:cubic-bezier(.22,1,.36,1);--ease-io:cubic-bezier(.65,0,.35,1);--bg:#fff;--fg:#1b1b1f;--mut:#6b6f76;--line:#e6e7ea;--card:#f6f7f9;--acc:#1565c0;--live:#2e7d32;--str:#d32f2f;--old:#9aa0a6;--warn:#b26a00;--late:#c62828;--ok:#2e7d32;--sheet-shadow:0 -6px 24px rgba(0,0,0,.18)}
 @media (prefers-color-scheme:dark){:root{--bg:#17181b;--fg:#ececf0;--mut:#9aa0a6;--line:#2b2d31;--card:#202226;--acc:#64a0ff;--sheet-shadow:0 -6px 24px rgba(0,0,0,.6)}
   .invert-dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9)} .leaflet-container{background:#111}}
 *{box-sizing:border-box}
@@ -31,7 +31,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .icon.on{background:var(--acc);color:#fff}
 .leaflet-control-attribution{font-size:10px}
 /* bottom sheet */
-#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,310px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
+#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,310px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .32s var(--ease-out);padding-bottom:env(safe-area-inset-bottom)}
 #sheet.drag{transition:none}
 #grab{position:relative;z-index:5;padding:12px 0 11px;touch-action:none;cursor:grab}
 #grab::before{content:"";position:absolute;left:0;right:0;top:-16px;bottom:0}   /* 44 px touch target (HIG), reaching a bit above the panel */
@@ -143,7 +143,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .srow .nm{flex:1;min-width:0;font-size:14px;direction:rtl;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .srow.mine .nm{font-weight:700}
 .srow .tm{font-size:12px;color:var(--mut);margin-left:8px;white-space:nowrap;text-align:right;min-width:70px}
-.dbus{position:absolute;left:8px;z-index:2;transform:translateY(-50%);transition:top 1.2s ease;pointer-events:none}
+.dbus{position:absolute;left:8px;z-index:2;transform:translateY(-50%);transition:top 1.2s var(--ease-io);pointer-events:none}
 /* departures */
 table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{padding:7px 4px;border-bottom:1px solid var(--line);text-align:left}
@@ -180,7 +180,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 /* banners & toast */
 #upd{display:none;position:absolute;z-index:1002;top:calc(56px + env(safe-area-inset-top));left:8px;right:8px;background:#fff3cd;color:#000;border:1px solid #c90;border-radius:10px;padding:8px 10px;font-size:13px}
 #updBtn{background:#1565c0;color:#fff;border:0;border-radius:999px;padding:6px 14px;margin-left:8px;font-weight:600;font-size:13px}
-#toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,310px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast{position:absolute;z-index:1003;left:50%;bottom:calc(var(--h,310px) + 12px);transform:translateX(-50%);background:#222;color:#fff;border-radius:999px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .3s var(--ease-out);pointer-events:none;white-space:nowrap}
 #toast.on{opacity:.95}
 /* freshness pill */
 .pill{display:inline-block;border-radius:999px;padding:0 7px;font-weight:600;font-size:11px;line-height:17px;color:#fff;background:var(--old)}
@@ -268,7 +268,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v101";
+const VERSION="v102";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -509,7 +509,7 @@ if(HAVE_MAP){
     for(const id in this._layers){ const l=this._layers[id]; if(l._path&&l.options.weight) l._path.style.strokeWidth=sc===1?"":(l.options.weight/sc)+"px"; } },
     _update(){ L.SVG.prototype._update.call(this);   // redrawn at the new zoom: back to the normal width
       for(const id in this._layers){ const l=this._layers[id]; if(l._path) l._path.style.strokeWidth=""; } } });
-  map=L.map("map",{zoomControl:false,attributionControl:false,renderer:new KeepWidthSVG({padding:1})}).setView([32.0,34.9],9);
+  map=L.map("map",{zoomControl:false,attributionControl:false,zoomSnap:.25,zoomDelta:.5,wheelPxPerZoomLevel:90,renderer:new KeepWidthSVG({padding:1})}).setView([32.0,34.9],9);
   // Leaflet rounds marker positions to whole pixels; slow movement then looks like x,y,x,y stair steps.
   // SmoothMarker keeps sub-pixel positions (browsers render fractional transforms smoothly).
   window.SmoothMarker=L.Marker.extend({update(){ if(this._icon&&this._map){ const p=this._map.project(this._latlng)._subtract(this._map.getPixelOrigin());   // unrounded (latLngToLayerPoint rounds)
@@ -1838,6 +1838,31 @@ $("diag").addEventListener("toggle",()=>{ if($("diag").open) $("dbg").textConten
 $("moreBtn").addEventListener("click",()=>{ BOARD_ALL=!BOARD_ALL; renderBoard(lastModel); });
 $("board").addEventListener("click",e=>{ const r=e.target.closest(".brow[data-ref]"); if(r) selectBus(r.dataset.ref); });
 $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r)tapStation(r.dataset.code);});
+const easeOut=t=>1-Math.pow(1-t,3), easeInOut=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+// ---- the map follows the lens: it fits the stretch of route inside the lens window (that stretch is outlined), and
+// goes back to where it was when the lens closes, unless the user moved the map meanwhile ----
+let lensMapSaved=null, lensMapUser=false, lensMapProg=false, lensMapT=0, lensMapLast=0, lensHi=null;
+function lensWindowAlong(){
+  const {loop,ppu}=lensUnits(), w=LENS_WIN/ppu, xs=stops.map((_,i)=>loop?loopP(stripU[i]):stripX0[i]);
+  const idx=stops.map((_,i)=>i).filter(i=>Math.abs(xs[i]-lensF)<=w);
+  if(!idx.length){ let bi=0; xs.forEach((x,i)=>{ if(Math.abs(x-lensF)<Math.abs(xs[bi]-lensF)) bi=i; }); idx.push(bi); }
+  const i0=Math.max(0,Math.min(...idx)-(idx.length<2?1:0)), i1=Math.min(stops.length-1,Math.max(...idx)+(idx.length<2?1:0));
+  return [stops[i0].along,stops[i1].along]; }
+function lensMap(){
+  if(!HAVE_MAP||!stripX0||routePts.length<2) return;
+  if(!lensMapSaved){ lensMapSaved={c:map.getCenter(),z:map.getZoom()}; lensMapUser=false; }
+  const now=performance.now(); if(now-lensMapLast<150){ clearTimeout(lensMapT); lensMapT=setTimeout(lensMap,150-(now-lensMapLast)); return; }
+  lensMapLast=now; const [a0,a1]=lensWindowAlong(), pts=slice(a0,a1);
+  if(!lensHi) lensHi=L.polyline(pts,{color:"#000",weight:12,opacity:.16,interactive:false,lineCap:"round"}).addTo(map); else lensHi.setLatLngs(pts);
+  if(lensMapUser) return;   // the user took over the map: keep the outline, stop moving it
+  lensMapProg=true;
+  map.fitBounds(L.latLngBounds(pts),{paddingTopLeft:[30,80],paddingBottomRight:[30,sheetH()+20],maxZoom:16,animate:true,duration:.25,easeLinearity:.35});
+  setTimeout(()=>{lensMapProg=false;},300); }
+function lensMapEnd(){
+  clearTimeout(lensMapT); if(lensHi){ lensHi.remove(); lensHi=null; }
+  if(lensMapSaved&&!lensMapUser&&HAVE_MAP){ lensMapProg=true; map.setView(lensMapSaved.c,lensMapSaved.z,{animate:true,duration:.35}); setTimeout(()=>{lensMapProg=false;},450); }
+  lensMapSaved=null; }
+if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg) lensMapUser=true; });
 (function lens(){   // tap = pick a station; press-and-hold or slide = fisheye lens (keeps the finger for the whole touch).
   // On release the lens stays open ("parked") so a second tap can pick a station among the spread-out ones; a new slide
   // moves it again; a tap on empty strip, picking a station, or 5 s without touching closes it.
@@ -1849,12 +1874,12 @@ $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r
     return LOOPK>=0&&LG?loopProj(x-r.left,y-r.top):p; };
   const startLens=()=>{ if(lensOn||!down) return; lensOn=true; clearTimeout(holdT); cancelAnimationFrame(lensAnim);
     lensF=at(lastX,lastY); el.classList.add("lensing");
-    const s0=performance.now(), k0=lensK; const grow=now=>{ lensK=Math.min(1,k0+(now-s0)/150); ask(); if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); };
+    const s0=performance.now(), k0=lensK; const grow=now=>{ const t=Math.min(1,(now-s0)/180); lensK=k0+(1-k0)*easeOut(t); ask(); lensMap(); if(t>=1) lensK=1; if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); };
     lensAnim=requestAnimationFrame(grow); };
   const closeLens=()=>{ parked=false; clearTimeout(parkT); lensOn=false; cancelAnimationFrame(lensAnim);
-    const s0=performance.now(), k0=lensK; const shrink=now=>{ lensK=Math.max(0,k0*(1-(now-s0)/250)); ask();
+    const s0=performance.now(), k0=lensK; const shrink=now=>{ const t=Math.min(1,(now-s0)/260); lensK=t>=1?0:k0*(1-easeInOut(t)); ask();
       if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); };
-    lensAnim=requestAnimationFrame(shrink); };
+    lensAnim=requestAnimationFrame(shrink); lensMapEnd(); };
   let tagRef=null;
   el.addEventListener("pointerdown",e=>{ clearTimeout(parkT); down=true; moved=false; lensOn=false; x0=lastX=e.clientX; y0=lastY=e.clientY;
     const tg=e.target.closest&&e.target.closest(".sbus"); tagRef=tg?tg.id.replace(/^sb-/,""):null;
@@ -1862,7 +1887,7 @@ $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r
     holdT=setTimeout(startLens,180); e.preventDefault(); });
   el.addEventListener("pointermove",e=>{ if(!down) return; lastX=e.clientX; lastY=e.clientY;
     if(!moved&&Math.hypot(e.clientX-x0,e.clientY-y0)>6){ moved=true; startLens(); }
-    if(lensOn){ lensF=at(e.clientX,e.clientY); ask(); } });
+    if(lensOn){ lensF=at(e.clientX,e.clientY); ask(); lensMap(); } });
   const release=e=>{ if(!down) return; down=false; clearTimeout(holdT); try{ el.releasePointerCapture(e.pointerId); }catch(_){}
     if(!lensOn){   // quick tap: a bus tag selects that bus; elsewhere the nearest station (in the lens if it's open)
       const wasParked=parked;
