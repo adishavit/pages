@@ -287,7 +287,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v146"; window.__appStarted=true;
+const VERSION="v147"; window.__appStarted=true;
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -2024,8 +2024,12 @@ const vh=()=>Math.round((window.visualViewport&&visualViewport.height)||innerHei
 function glanceH(){ const sh=$("sheet"), h=$("hero"); if(!h) return 300; return Math.round(h.getBoundingClientRect().bottom-sh.getBoundingClientRect().top+(sh.classList.contains("peek")?60:4)); }
 const SNAP=()=>{ const H=vh(), g=Math.min(glanceH(),H*.5); return [112+Math.round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sab"))||0), g, Math.max(g+120,Math.round(H*.55)), H-70]; };
 let sheetIdx=1;
-function setSheet(i){ sheetIdx=Math.max(0,Math.min(3,i)); $("sheet").classList.toggle("peek",sheetIdx===0);
-  const h=SNAP()[sheetIdx]; document.documentElement.style.setProperty("--h",h+"px"); }
+function setSheet(i){ sheetIdx=Math.max(0,Math.min(3,i)); const sh=$("sheet");
+  // measure the target layout with transitions off: mid-transition (strip still at its minimal height) the normal
+  // height came out ~90 px too short and cut the names and the lines under the strip
+  sh.classList.add("glide"); sh.classList.toggle("peek",sheetIdx===0);
+  const h=SNAP()[sheetIdx]; void sh.offsetHeight; sh.classList.remove("glide");
+  document.documentElement.style.setProperty("--h",h+"px"); }
 (function drag(){
   // Dragging the panel between its minimal (Peek) and normal (Glance) heights is one continuous transition, both ways:
   // the strip glides between its minimal and normal places (slower than the handle), the lines under it collapse or
