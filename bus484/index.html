@@ -86,7 +86,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sbus.up.upL{transform:translateX(-7px)}.sbus.up.upR{transform:translateX(calc(-100% + 7px))}
 .sbus.up.upR::after{left:auto!important;right:6px}.sbus.up.upR::before{left:auto!important;right:2px}   /* anchored at the first station, kept on screen */
 .strk .close{fill:none;stroke:var(--old);stroke-width:2;stroke-dasharray:3 3;opacity:.45}
-.leaflet-container:not(.near) .stoplbl.dup{display:none}
+.stoplbl .fl{display:none}.near .stoplbl .fl{display:inline}.near .stoplbl .sh{display:none}   /* street only; full stop name when zoomed in */
 .slab.lo>span{bottom:auto;top:0;transform-origin:0 0;transform:rotate(40deg)}
 .slab.lo.r>span{left:auto;right:0;transform-origin:100% 0;transform:rotate(-40deg)}
 #strip.loop .sarr{font-size:8px;line-height:10px}
@@ -269,7 +269,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v116";
+const VERSION="v117";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -521,6 +521,7 @@ if(HAVE_MAP){
   map.createPane("stopsPane").style.zIndex=450;   // stations above the route and congestion lines, below bus markers
   stopLayer=L.layerGroup().addTo(map); hotLayer=L.layerGroup().addTo(map); trailLayer=L.layerGroup().addTo(map); estLayer=L.layerGroup().addTo(map); meLayer=L.layerGroup().addTo(map);
   const zc=()=>{ map.getContainer().classList.toggle("far",map.getZoom()<12); map.getContainer().classList.toggle("near",map.getZoom()>=16); }; map.on("zoomend",zc); zc();
+  map.on("zoomend moveend",()=>declutterMap());
 }else{ $("map").innerHTML='<p style="padding:5em 1em">Map library failed to load. Lists still update.</p>'; log("Leaflet missing"); }
 function sheetH(){return $("sheet").getBoundingClientRect().height||190;}
 function fitRoute(){ if(!HAVE_MAP) return; const b=routeLine?routeLine.getBounds():(stops.length>1?L.latLngBounds(stops.map(s=>[s.lat,s.lon])):null);
@@ -586,16 +587,27 @@ function drawStops(){
   // a faint straight line joins the stations.
   routeLine=road?L.polyline(routePts,{color:"#1565c0",weight:5,opacity:.65}).addTo(stopLayer)
                :roadFailed?L.polyline(routePts,{color:"#1565c0",weight:2,opacity:.35}).addTo(stopLayer):null;
-  const shownM=labelShown();   // same-street runs: one name (as on the strip); all names once zoomed in close
+  stopMarks=[];
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, dest=s.code===TO_STOP, end=i===0||i===stops.length-1;
     // HTML markers (not vector circles): they keep their size while you pinch-zoom
     L.marker([s.lat,s.lon],{pane:"stopsPane",icon:L.divIcon({className:"",iconSize:[0,0],html:`<div class="stn${mine?" mine":dest?" dest":""}"></div>`}),keyboard:false})
-      .bindTooltip(esc(s.name),{permanent:true,direction:"right",offset:[mine||dest?11:8,0],className:"stoplbl"+(mine?" mine":dest?" dest":end?"":" n")+(shownM[i]||end?"":" dup"),interactive:true})
+      .bindTooltip(`<span class="sh">${esc(shortName(s.name))}</span><span class="fl">${esc(s.name)}</span>`,{permanent:true,direction:"right",offset:[mine||dest?11:8,0],className:"stoplbl"+(mine?" mine":dest?" dest":end?"":" n"),interactive:true})
       .on("click",()=>tapStation(s.code)).addTo(stopLayer);
+    stopMarks.push({i,m:stopLayer.getLayers()[stopLayer.getLayers().length-1]});
   });
   if(!fitted&&stops.length){fitRoute();fitted=true;}
+  declutterMap();
 }
+// map labels: same priorities as the strip, overlap tested on the labels' actual boxes; redone after every zoom/pan
+let stopMarks=[], declT=0;
+function declutterMap(){ if(!HAVE_MAP||declT) return; declT=requestAnimationFrame(()=>{ declT=0;
+  const firsts=runFirsts(), fb=focusBus(lastModel||[]), na=fb?busNowAlong(fb):null, nextI=na==null?-1:stops.findIndex(s=>s.along>na+30);
+  const items=[];
+  for(const {i,m} of stopMarks){ const t=m.getTooltip&&m.getTooltip(), el=t&&t.getElement&&t.getElement(); if(!el) continue;
+    el.style.visibility=""; const r=el.getBoundingClientRect(); if(!r.width) continue;
+    items.push({i,el,pri:labPri(i,nextI,firsts,false),quad:[[r.left,r.top],[r.right,r.top],[r.right,r.bottom],[r.left,r.bottom]]}); }
+  const show=placeLabels(items); for(const it of items) if(!show.has(it.i)) it.el.style.visibility="hidden"; }); }
 async function loadRoad(){
   if(stops.length<2) return;
   // cached by line + station codes (stable), so the timetable's slightly different coordinates don't cause a re-fetch
@@ -1581,14 +1593,39 @@ function stripXraw(a){
     if(a<=B){const f=B>A?(a-A)/(B-A):0; return stripX0[i]+f*(stripX0[i+1]-stripX0[i]);}}
   return stripX0[stripX0.length-1];
 }
-// Runs of consecutive stations on the same street ("מינץ", "מינץ", "מינץ"…) get one name: the first in the direction of
-// travel, or the From / To station if one of them is in the run. Under the lens every name shows again.
-function labelShown(){ const n=stops.length, out=stops.map(()=>false);
-  for(let i=0;i<n;){ const nm=shortName(stops[i].name); let j=i; while(j+1<n&&shortName(stops[j+1].name)===nm) j++;
-    let sel=false; for(let k=i;k<=j;k++) if(stops[k].code===MY_STOP||stops[k].code===TO_STOP){ out[k]=true; sel=true; }
-    if(!sel) out[i]=true; i=j+1; }
+// ---- Label thinning (both strip and map): priority + collision detection, as map libraries do. Labels are placed in
+// priority order; one that would overlap an already placed label is left out. Priorities: From/To (always), names under
+// the lens, the followed bus's next stop, the two ends of the line, the first stop of each run on the same street, then
+// the other same-street stops. Ties go in route order, so the choice is stable.
+function runFirsts(){ return stops.map((s,i)=>i===0||shortName(stops[i-1].name)!==shortName(s.name)); }
+function labPri(i,nextI,firsts,useLens){ const s=stops[i];
+  if(s.code===MY_STOP||s.code===TO_STOP) return 0;
+  if(useLens&&lensK>0&&!lensFar(i)) return 1;
+  if(i===nextI) return 2; if(i===0||i===stops.length-1) return 3; return firsts[i]?4:5; }
+const LAB_ANG=40*Math.PI/180, LAB_H=12; let labCtx=null; const labWc=new Map();
+function labWidth(text,bold){ const k=(bold?"b":"n")+text; let w=labWc.get(k);
+  if(w==null){ if(labCtx===null){ try{ labCtx=document.createElement("canvas").getContext("2d")||false; }catch(_){ labCtx=false; } }
+    if(labCtx){ labCtx.font=`${bold?700:400} 11px ${getComputedStyle(document.body).fontFamily}`; w=labCtx.measureText(text).width+4; }
+    else w=text.length*(bold?6.3:5.8)+4;   // no canvas: estimate
+    labWc.set(k,w); }
+  return w; }
+// the slanted box a strip label covers (matches the .slab CSS: 40°, anchored at the station end, above or below the line)
+function labQuad(ax,ay,w,right,low){ const c=Math.cos(LAB_ANG), s=Math.sin(LAB_ANG);
+  const u=low?(right?[c,-s]:[c,s]):(right?[c,s]:[c,-s]), n=low?(right?[s,c]:[-s,c]):(right?[s,-c]:[-s,-c]);
+  const p=right?[ax-w*u[0],ay-w*u[1]]:[ax,ay], q=[p[0]+w*u[0],p[1]+w*u[1]];
+  return [p,q,[q[0]+LAB_H*n[0],q[1]+LAB_H*n[1]],[p[0]+LAB_H*n[0],p[1]+LAB_H*n[1]]]; }
+function quadsOverlap(a,b){   // separating-axis test for two convex quads
+  for(const P of [a,b]) for(let k=0;k<4;k++){ const p=P[k], q=P[(k+1)%4], nx=q[1]-p[1], ny=p[0]-q[0], L=Math.hypot(nx,ny)||1;
+    let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;
+    for(const v of a){ const d=(v[0]*nx+v[1]*ny)/L; a0=Math.min(a0,d); a1=Math.max(a1,d); }
+    for(const v of b){ const d=(v[0]*nx+v[1]*ny)/L; b0=Math.min(b0,d); b1=Math.max(b1,d); }
+    if(a1<=b0+1||b1<=a0+1) return false; }
+  return true; }
+// cands: [{i,pri,quad}] -> Set of station indices whose label is shown
+function placeLabels(cands){ const placed=[], out=new Set();
+  for(const c of [...cands].sort((x,y)=>x.pri-y.pri||x.i-y.i)){
+    if(c.pri>0&&placed.some(q=>quadsOverlap(q,c.quad))) continue; placed.push(c.quad); out.add(c.i); }
   return out; }
-const showLab=(shown,i)=>shown[i]||(lensK>0&&!lensFar(i));
 const shortName=n=>String(n).split("/")[0].replace(/^ת\. ?רכבת /,"").replace(/^ת\.רק''ל /,"").replace(/^ת\. מרכזית /,"").trim();
 function busNowAlong(b){ const age=Math.max(0,(Date.now()-goT(b))/1000);
   return b.stale?b.along:(haveTraffic()?advance(b.along,age):Math.min(routeLen(),b.along+b.sp*age)); }
@@ -1667,14 +1704,17 @@ function renderStrip(model){
   // stations, all named (angled); my stop with its ETA
   const p=myStop()?myStopPredictions(model):[], my=myStop(), selB=SEL_BUS&&model.find(b=>b.ref===SEL_BUS), selF=selB?selAt(selB,my):null;
   const myEta=selB?(selF&&selF!=="passed"?selF.t:null):(p.length?p[0].t:null), myDash=selB&&selF==="passed";
-  const shownL=labelShown();
+  const shownL=(()=>{ const W=$("stripIn").clientWidth||360, firsts=runFirsts();
+    return placeLabels(stops.map((s,i)=>{ const mine=s.code===MY_STOP, x=SX(i)*W/100;
+      const txt=shortName(s.name)+(mine&&(myEta||myDash)?" · 00′":"");
+      return {i,pri:labPri(i,nextIdx[0],firsts,true),quad:labQuad(x,44,labWidth(txt,mine||s.code===TO_STOP||nextIdx.includes(i)),SX(i)>50,false)}; })); })();
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
     const dest=s.code===TO_STOP;
     const rw=LO(loop?stripRow[i]:0);
     h+=`<b class="sd${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${waitTxt(myEta,true)}`:mine&&myDash?" · --":"");
-    if(showLab(shownL,i)) h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}${lensFar(i)?" far":""}" style="left:${SX(i)}%${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span>${lab}</span></span>`;
+    if(shownL.has(i)) h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}${lensFar(i)?" far":""}" style="left:${SX(i)}%${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span>${lab}</span></span>`;
   });
   // destination
   if(!loop) h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
@@ -1736,13 +1776,16 @@ function renderLoopStrip(model){
         h+=`<span class="sgap" style="left:${pc(gx)}%;top:${G.yT+G.r-6}px" title="time left for this bus to reach your getting-off stop">~${m} min left</span>`; } } }
   const p=myStop()?myStopPredictions(model):[], my=myStop(), selB=SEL_BUS&&model.find(b=>b.ref===SEL_BUS), selF=selB?selAt(selB,my):null;
   const myEta=selB?(selF&&selF!=="passed"?selF.t:null):(p.length?p[0].t:null), myDash=selB&&selF==="passed";
-  const shownL=labelShown();
+  const shownL=(()=>{ const firsts=runFirsts();
+    return placeLabels(stops.map((s,i)=>{ const mine=s.code===MY_STOP, q=loopAt(stripU[i]);
+      const txt=shortName(s.name)+(mine&&(myEta||myDash)?" · 00′":"");
+      return {i,pri:labPri(i,nextIdx[0],firsts,true),quad:labQuad(q.x,q.lo?q.y+8:q.y-8,labWidth(txt,mine||s.code===TO_STOP||nextIdx.includes(i)),q.x/G.W*100>50,q.lo)}; })); })();
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i), dest=s.code===TO_STOP;
     const q=loopAt(stripU[i]), x=pc(q.x), cl=`${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}`;
     h+=`<b class="sd${cl}" data-code="${esc(s.code)}" style="left:${x}%;top:${q.y}px" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${waitTxt(myEta,true)}`:mine&&myDash?" · --":"");
-    if(showLab(shownL,i)) h+=`<span class="slab${x>50?" r":""}${cl}${q.lo?" lo":""}${lensFar(i)?" far":""}" style="left:${x}%;top:${q.lo?q.y+8:q.y-8}px${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span>${lab}</span></span>`;
+    if(shownL.has(i)) h+=`<span class="slab${x>50?" r":""}${cl}${q.lo?" lo":""}${lensFar(i)?" far":""}" style="left:${x}%;top:${q.lo?q.y+8:q.y-8}px${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span>${lab}</span></span>`;
   });
   for(const b of model){
     const cls=(b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":""), f=loopAt(stripUraw(b.along)), n=loopAt(stripUraw(busNowAlong(b)));
