@@ -269,7 +269,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v122";
+const VERSION="v123";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -355,6 +355,7 @@ function fallbackDays(){ const wd=new Date(todayIL()+"T12:00:00Z").getUTCDay(); 
   if(wd===5||wd===6) return [7];
   const out=[]; for(let k=1;k<=7;k++){ const w=(wd-k+7)%7; if(w<=4) out.push(k); } return out; }
 const jnum=j=>String(j||"").split("_")[0];       // journey ref without its date suffix
+let NEXT_DAY="";   // set when today has no service and the timetable is the next service day's
 let LINE_FAIL="", lineRetry=0, lineRetryT=null;   // timetable lookup failed (Stride slow/down): retry with backoff
 async function loadLine(){
   if(REF===19094) useBuiltin();
@@ -365,6 +366,11 @@ async function loadLine(){
     if(!rt.length){ for(const k of fallbackDays()){ const dd=dayIL(-k);
         rt=await getJSON("routes-"+dd,`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dd}&date_to=${dd}&limit=50`);
         if(rt.length){ ttDate=dd; ttShift=k; log(`no timetable for ${d} yet: using ${dd}, shifted ${k} day(s)`); break; } } }
+    // no service today (e.g. Shabbat): use the next day that has it, with its real times (shown with the day name)
+    NEXT_DAY="";
+    if(!rt.length){ for(let k=1;k<=3;k++){ const dd=dayIL(k);
+        rt=await getJSON("routes+"+k,`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dd}&date_to=${dd}&limit=50`);
+        if(rt.length){ ttDate=dd; NEXT_DAY=new Date(Date.now()+k*86400000).toLocaleDateString("en-GB",{weekday:"short",timeZone:TZ}); log(`no service today: next on ${dd}`); break; } } }
     routeOpts=rt;
     if(!REF){   // no direction/route chosen: if this number means several different lines, don't guess
       const lines=new Set(rt.map(r=>r.route_mkt||r.agency_name)), rec=recentLines().find(x=>String(x.line)===String(LINE)&&rt.some(r=>String(r.line_ref)===String(x.ref)));
@@ -386,6 +392,14 @@ async function loadLine(){
         const sh=t=>t?new Date(Date.parse(t)+k*86400000).toISOString():t;
         rides=rd.map(r=>({...r,start_time:sh(r.start_time),end_time:sh(r.end_time)})).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time));
         route=r2; ttDate=dd; ttShift=k; log(`using ${dd}'s timetable, shifted ${k} day(s)`); break; } }
+    // just after midnight, the evening's last trips belong to yesterday's timetable (times like 24:30): add those
+    // that started in the last 4 hours
+    if(!ttShift&&!NEXT_DAY&&+new Date().toLocaleString("en-GB",{hour:"2-digit",hour12:false,timeZone:TZ})<4){ try{
+      const dd=dayIL(-1), r0=(await getJSON("routes-"+dd,`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dd}&date_to=${dd}&limit=50`)).find(r=>r.line_ref===REF);
+      if(r0){ const have=new Set(rides.map(x=>x.id)), cut=Date.now()-4*3600000;
+        const late=(await getJSON("rides-"+dd,`${API}/gtfs_rides/list?gtfs_route_id=${r0.id}&limit=200`)).filter(x=>!have.has(x.id)&&Date.parse(x.start_time)>=cut);
+        if(late.length){ rides=rides.concat(late).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time)); log(`after midnight: +${late.length} trips from ${dd}`); } }
+    }catch(e){ log("yesterday's late trips: "+e.message); } }
     log(`rides today: ${rides.length}`);
     if(!rides.length){ renderLineOpts(); return; }
     const ref=rides[Math.floor(rides.length/2)];   // a mid-day ride as the timing reference
@@ -1377,7 +1391,7 @@ function renderHero(model){
   const m=Math.max(0,Math.round((p[0].t-Date.now())/60000));
   $("heroMin").textContent=waitTxt(p[0].t);
   const nb0=p[0].ref&&model.find(b=>b.ref===p[0].ref);
-  $("heroTxt").innerHTML=`Next <b>${esc(title.num)}</b> at ${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}${p[0].src!=="traffic"&&p[0].src!=="est"?oursTxt(ourPred(nb0,s),p[0].t):""}`;
+  $("heroTxt").innerHTML=(NEXT_DAY?`No service today · `:"")+`Next <b>${esc(title.num)}</b> at ${NEXT_DAY&&p[0].t>Date.now()+12*3600000?NEXT_DAY+" ":""}${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}${p[0].src!=="traffic"&&p[0].src!=="est"?oursTxt(ourPred(nb0,s),p[0].t):""}`;
   const ps=passedMyStop(), g=[...ps].reverse().find(x=>!x.before), gb=ps[ps.length-1], ago=g?Math.round((Date.now()-g.t)/60000):null;
   const missed=g&&ago<=20?`<span class="${ago<=5?"d-early":""}">${ago<=5?"Just missed one":"Last one"}: passed ${ago<=1?"a minute":ago+" min"} ago</span>`
               :gb&&gb.before&&Date.now()-gb.t<=20*60000?`One passed before ${hm(gb.t)}`:"";
