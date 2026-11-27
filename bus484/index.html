@@ -268,7 +268,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v109";
+const VERSION="v110";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1861,16 +1861,24 @@ function lensWindowAlong(){
   const idx=stops.map((_,i)=>i).filter(i=>Math.abs(xs[i]-lensF)<=w);
   if(idx.length<2){ const o=stops.map((_,i)=>i).sort((a,b)=>Math.abs(xs[a]-lensF)-Math.abs(xs[b]-lensF)); idx.splice(0,idx.length,o[0],o[1]); }
   return [stops[Math.min(...idx)].along,stops[Math.max(...idx)].along]; }
+// Panning moves the existing map image (tiles stay); zooming uses Leaflet's own animated zoom, which keeps the old
+// tiles scaled until the new ones arrive. (A non-animated setView with a new zoom throws all tiles away: that blanked
+// the map while dragging.) Pan: per-frame exponential smoothing. Zoom: quarter steps, one animated step at a time.
+let lensZoomAt=0;
 function lensMapStep(now){
   lensMapRaf=0; if(!lensMapTgt||!HAVE_MAP) return;
   const dt=Math.min(64,now-(lensMapPrevT||now-16)); lensMapPrevT=now;
-  const a=1-Math.exp(-dt/LENS_MAP_TAU), c=map.getCenter(), z=map.getZoom(), t=lensMapTgt;
-  const nz=z+(t.z-z)*a, nlat=c.lat+(t.c.lat-c.lat)*a, nlng=c.lng+(t.c.lng-c.lng)*a;
-  const done=Math.abs(t.z-nz)<0.01&&map.latLngToContainerPoint(t.c).distanceTo(map.latLngToContainerPoint([nlat,nlng]))<0.5;
-  lensMapProg=true; map.setView(done?t.c:[nlat,nlng],done?t.z:nz,{animate:false}); lensMapProg=false;
-  if(done){ lensMapTgt=null; if(lensMapBack){ lensMapBack=false; map.options.zoomSnap=.25; } return; }
+  const a=1-Math.exp(-dt/LENS_MAP_TAU), t=lensMapTgt, anim=!!map._animatingZoom;
+  let panLeft=0;
+  if(!anim){ const p0=map.latLngToContainerPoint(map.getCenter()), p1=map.latLngToContainerPoint(t.c), d=p1.subtract(p0); panLeft=d.distanceTo(L.point(0,0));
+    if(panLeft>=0.5){ lensMapProg=true; map.panBy(d.multiplyBy(a),{animate:false}); lensMapProg=false; } }
+  const dz=t.z-map.getZoom();
+  if(!anim&&Math.abs(dz)>=0.25&&now-lensZoomAt>300){ lensZoomAt=now;
+    const step=Math.max(-1,Math.min(1,Math.round(dz*0.6*4)/4||Math.sign(dz)*0.25));
+    lensMapProg=true; map.setZoomAround(map.getSize().divideBy(2),map.getZoom()+step,{animate:true}); setTimeout(()=>{lensMapProg=false;},300); }
+  if(!anim&&panLeft<0.5&&Math.abs(dz)<0.25){ lensMapTgt=null; lensMapBack=false; return; }
   lensMapRaf=requestAnimationFrame(lensMapStep); }
-function lensMapGo(c,z){ lensMapTgt={c:L.latLng(c),z}; map.options.zoomSnap=0;   // fractional zoom while gliding
+function lensMapGo(c,z){ lensMapTgt={c:L.latLng(c),z};
   if(!lensMapRaf){ lensMapPrevT=0; lensMapRaf=requestAnimationFrame(lensMapStep); } }
 function lensMap(){
   if(!HAVE_MAP||!stripX0||routePts.length<2) return;
@@ -1882,10 +1890,9 @@ function lensMap(){
   lensMapGo(cz.center,Math.min(LENS_MAP_MAXZ,cz.zoom)); }
 function lensMapEnd(){
   if(lensHi){ lensHi.remove(); lensHi=null; }
-  // the map stays where the lens took it (no jump back): let a glide in progress finish, then snap to quarter zooms again
-  if(!lensMapTgt) map.options.zoomSnap=.25; else lensMapBack=true;
+  // the map stays where the lens took it (no jump back); a glide in progress just finishes
   lensMapSaved=null; }
-if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ lensMapUser=true; lensMapTgt=null; map.options.zoomSnap=.25; } });
+if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ lensMapUser=true; lensMapTgt=null; } });
 (function lens(){   // tap = pick a station; press-and-hold or slide = fisheye lens (keeps the finger for the whole touch).
   // On release the lens stays open ("parked") so a second tap can pick a station among the spread-out ones; a new slide
   // moves it again; a tap on empty strip, picking a station, or 2.5 s without touching closes it.
