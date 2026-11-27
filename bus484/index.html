@@ -286,7 +286,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v141"; window.__appStarted=true;
+const VERSION="v142"; window.__appStarted=true;
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -2037,14 +2037,14 @@ function setSheet(i){ sheetIdx=Math.max(0,Math.min(3,i)); $("sheet").classList.t
     if(t==null){ sh.classList.remove("glide"); for(const e of [a,b,ht,hn]) e.style.cssText=""; sh.style.removeProperty("--labA"); return; }
     const e=t*t*(3-2*t);   // smoothstep: eases at both ends
     sh.classList.add("glide"); sh.classList.remove("peek");
-    a.style.height=(M.strip0+(M.stripN-M.strip0)*e)+"px"; a.style.overflow=e<1?"hidden":"";
+    a.style.height=(M.strip0+(M.stripN-M.strip0)*e)+"px";   // no clipping: names/tags are faded instead (clipping flashed them)
     b.style.transform=`translateY(${(M.ty0*(1-e)).toFixed(1)}px)`;
     ht.style.cssText=`max-height:${(M.ht*e).toFixed(1)}px;overflow:hidden;opacity:${e.toFixed(3)}`;
     hn.style.cssText=`max-height:${(M.hn*e).toFixed(1)}px;overflow:hidden;opacity:${e.toFixed(3)}`;
     sh.style.setProperty("--labA",Math.max(0,Math.min(1,(t-.45)/.55)).toFixed(3)); };   // names fade in over the upper half
   const down=e=>{y0=e.clientY;h0=sh.getBoundingClientRect().height;moved=false;M=measure();
     sh.classList.add("drag");e.target.setPointerCapture&&e.target.setPointerCapture(e.pointerId);};
-  const move=e=>{if(y0==null)return;const dy=y0-e.clientY;if(Math.abs(dy)>4)moved=true;
+  const move=e=>{if(y0==null)return;const dy=y0-e.clientY;if(Math.abs(dy)>4)moved=true; if(!moved) return;   // ignore finger tremble
     const nh=Math.max(90,Math.min(vh()-60,h0+dy)), lo=M.snaps[0], hi=M.snaps[1];
     if(nh<=lo){ glide(null); sh.classList.add("peek"); }
     else if(nh>=hi){ glide(null); sh.classList.remove("peek"); }
