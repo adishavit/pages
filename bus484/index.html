@@ -258,7 +258,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v92";
+const VERSION="v93";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -637,7 +637,7 @@ let newestMs=null, strideNewestMs=null;
 let liveState="untried", liveRetryAt=0, liveTurn=0, liveFails=0;
 let refreshErr="", inFlight=false, timer=null, lastRun=0, nextAt=0, okCount=0, failCount=0;
 
-function q(from,to,ref=REF){return `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${ref}&recorded_at_time_from=${encodeURIComponent(new Date(from).toISOString())}&recorded_at_time_to=${encodeURIComponent(new Date(to).toISOString())}&order_by=recorded_at_time%20desc&limit=${LIMIT}`;}
+function q(from,to,ref=REF){return `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${ref}&recorded_at_time_from=${encodeURIComponent(new Date(from).toISOString())}&recorded_at_time_to=${encodeURIComponent(new Date(to).toISOString())}&limit=${LIMIT}`;}
 // Stride filters by one route id: a line made of several routes (TWINS) needs one query each
 async function strideGet(label,from,to){ const refs=lineRefs(); if(refs.length===1) return getJSON(label,q(from,to));
   const r=await Promise.allSettled(refs.map((x,i)=>getJSON(label+(i?"/"+x:""),q(from,to,x))));
