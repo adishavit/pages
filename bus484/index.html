@@ -95,7 +95,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 #strip.loop .sbus::before,#strip.loop .sbus.r2::before{top:calc(7px + var(--ph,10px));clip-path:polygon(0 0,100% 0,50% 100%)}
 #strip.loop .sbus.lo::after,#strip.loop .sbus.lo.r2::after{top:calc(-1 * var(--ph,10px));height:var(--ph,10px)}
 #strip.loop .sbus.lo::before,#strip.loop .sbus.lo.r2::before{top:calc(-2px - var(--ph,10px));clip-path:polygon(50% 0,100% 100%,0 100%)}
-#sheet.peek #strip.loop #stripIn{transform:translateY(-97px)}
+#sheet.peek #strip.loop{height:42px}#sheet.peek #strip.loop #stripIn{transform:translateY(-94px)}   /* both bars (104 / 126 px) plus dot radius */
 #hero{padding:4px 16px 8px;touch-action:none}
 #heroTop{font-size:12px;color:var(--mut);display:flex;flex-direction:column;align-items:flex-start;gap:2px}   /* always two lines: no layout jump when the stop changes */
 #heroStop{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -269,7 +269,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v124";
+const VERSION="v125";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
