@@ -267,7 +267,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v99";
+const VERSION="v100";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1431,10 +1431,26 @@ const LOOP_M=8, LOOP_MIN_STOPS=20, SNAKE_MIN_STOPS=30;   // short lines read fin
 let SNAKE=false;
 // loop lines that go out and back on the same streets: "twin" = the station facing this one on the other pass (< 120 m)
 let STRIP_TWIN=[], ALIGN_FACING=load("alignFacing")!=="0";
-function computeTwins(){ STRIP_TWIN=stops.map(()=>null); if(!title.loop) return;
-  for(let i=0;i<stops.length;i++){ let bj=null,bd=120;
-    for(let j=0;j<stops.length;j++){ if(Math.abs(j-i)<3) continue; const d=dist(stops[i].lat,stops[i].lon,stops[j].lat,stops[j].lon); if(d<bd){bd=d;bj=j;} }
-    STRIP_TWIN[i]=bj; } }   // long one-way line folded in two (same track as the racetrack, but open at the end)
+// Facing stops ("twins") on out-and-back loops: a way-out stop i and a way-back stop j are candidates if they are within
+// 120 m and their names match (same streets in any order, small spelling differences allowed: רקנאטי/רקאנטי).
+// Facing pairs can't cross (going out in one order, the way back meets them in reverse), so this is not a plain
+// bipartite matching: a sequence-alignment DP picks the non-crossing set with the best total score.
+function normTokens(n){ return String(n||"").replace(/["'״׳`]/g,"").split("/").map(t=>t.replace(/\s+/g,"")).filter(Boolean).sort(); }
+function lev(a,b){ const m=a.length,n=b.length; if(Math.abs(m-n)>2) return 9; let p=[...Array(n+1).keys()];
+  for(let i=1;i<=m;i++){ const c=[i]; for(let j=1;j<=n;j++) c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1)); p=c; } return p[n]; }
+function namesMatch(a,b){ const A=normTokens(a),B=normTokens(b); if(!A.length||!B.length) return false;
+  const [S,L]=A.length<=B.length?[A,B]:[B,A]; return S.every(t=>L.some(u=>t===u||(t.length>3&&lev(t,u)<=2))); }
+function computeTwins(){ const n=stops.length; STRIP_TWIN=stops.map(()=>null); if(!title.loop||n<4) return;
+  let K=0,bd=-1; stops.forEach((st,i)=>{const d=dist(stops[0].lat,stops[0].lon,st.lat,st.lon); if(d>bd){bd=d;K=i;}});   // turnaround
+  const T=[...Array(K+1).keys()], R=[]; for(let j=n-1;j>K;j--) R.push(j);   // way out in order, way back reversed
+  const sc=(i,j)=>{ const d=dist(stops[i].lat,stops[i].lon,stops[j].lat,stops[j].lon); if(d>=120||!namesMatch(stops[i].name,stops[j].name)) return null;
+    return 1+0.5*(1-d/120)+(stops[i].name===stops[j].name?0.25:0); };
+  const D=[...Array(T.length+1)].map(()=>new Float64Array(R.length+1));
+  for(let a=1;a<=T.length;a++) for(let b=1;b<=R.length;b++){ const v=sc(T[a-1],R[b-1]);
+    D[a][b]=Math.max(D[a-1][b],D[a][b-1],v==null?-1:D[a-1][b-1]+v); }
+  for(let a=T.length,b=R.length;a>0&&b>0;){ const v=sc(T[a-1],R[b-1]);
+    if(v!=null&&Math.abs(D[a][b]-(D[a-1][b-1]+v))<1e-9){ STRIP_TWIN[T[a-1]]=R[b-1]; STRIP_TWIN[R[b-1]]=T[a-1]; a--; b--; }
+    else if(D[a][b]===D[a-1][b]) a--; else b--; } }
 function stripLayout(){
   if(stops.length<2){stripX0=null;return;}
   LOOPK=-1; SNAKE=false; computeTwins();
@@ -1496,7 +1512,7 @@ function lensX(x){ return lensGen(x,stripLo,stripHi); }
 // Local lens: stations within ~LENS_R px of the finger spread apart, ones farther away stay where they are
 // (displacement d·k·exp(-(d/R)²); monotone for k < 2.24). Its strength k adapts to the local spacing: just enough to
 // bring neighbouring stations ~LENS_TARGET px apart, and none where they already are (wide screens, sparse lines).
-const LENS_R=55, LENS_TARGET=30, LENS_KMAX=2;
+const LENS_R=70, LENS_TARGET=44, LENS_KMAX=2.2;
 let lensGainF=null, lensGainV=0;
 function lensUnits(){ const loop=LOOPK>=0&&LG; return {loop, ppu:loop?1:($("stripIn").clientWidth||360)/100}; }
 function lensGain(){
