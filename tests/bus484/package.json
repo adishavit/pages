@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "description": "Tests for bus484/index.html (jsdom harnesses with mocked APIs). Run: npm ci && ./check.sh",
+  "devDependencies": { "jsdom": "^24.1.3", "leaflet": "1.9.4" }
+}
