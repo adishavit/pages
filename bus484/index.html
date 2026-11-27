@@ -282,7 +282,19 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v152"; window.__appStarted=true;
+const VERSION="v153"; window.__appStarted=true;
+// The site now has HTTPS. http and https keep separate saved data, so an http visit moves this browser's saved stops,
+// recent lines and settings to https in the address (#mig=...) and continues there; https takes them in (never
+// overwriting) and cleans the address.
+(function(){ try{
+  const KEEP=/^(mystop:|tostop:|acc:|recentLines$|alignFacing$|mapstyle2$)/;
+  if(location.protocol==="http:"&&location.hostname==="videocortex.io"){
+    const o={}; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(KEEP.test(k)) o[k]=localStorage.getItem(k); }
+    location.replace("https://"+location.host+location.pathname+location.search+(Object.keys(o).length?"#mig="+encodeURIComponent(JSON.stringify(o)):"")); }
+  else if(location.hash.startsWith("#mig=")){ const o=JSON.parse(decodeURIComponent(location.hash.slice(5)));
+    for(const k in o) if(KEEP.test(k)&&localStorage.getItem(k)==null) localStorage.setItem(k,o[k]);
+    history.replaceState(null,"",location.pathname+location.search); }
+}catch(_){} })();
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
