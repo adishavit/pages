@@ -78,7 +78,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .strk .past{stroke:var(--old);opacity:.35;stroke-width:3}
 .strk .chev{fill:none;stroke:#fff;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.95}
 .strk .chev.past{stroke:#666;opacity:.8}.strk .chev.nodata{stroke:var(--acc);opacity:1}
-.slab.far{opacity:.18}
+/* .slab.far: faded while the lens is on; opacity set inline from the lens strength so it eases with it */
 .strk .snEnd{stroke:var(--acc);stroke-width:3;stroke-linecap:round;opacity:.8}
 .sbus.up{background:var(--bg,#fff)!important;color:var(--str);box-shadow:none;border:1.5px dashed var(--str);line-height:11px;cursor:default;opacity:.85}
 .sbus.up::after,.sbus.up::before{background:var(--str);opacity:.5;margin-left:0!important}
@@ -268,7 +268,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v103";
+const VERSION="v104";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1108,6 +1108,10 @@ function buildModel(){
     }
     out.push({ref,fx,r,stale,behind,live:!!r.live,along:sn.along,off:sn.d,sp,brg,ageS,estAlong,start,etas,delay,delaySrc});
   }
+  // a grey (stale) bus that a later-departing, up-to-date bus has already overtaken is gone (finished, or stopped
+  // reporting): drop it. Recomputed every time, so if it reports again it comes back.
+  for(let k=out.length-1;k>=0;k--){ const b=out[k]; if(!b.stale||b.start==null||b.ref===SEL_BUS) continue;
+    if(out.some(c=>!c.stale&&c.start!=null&&c.start>b.start&&c.along>b.along+50)) out.splice(k,1); }
   return out.sort((a,b)=>b.along-a.along);
 }
 function delayHtml(b){
@@ -1659,7 +1663,7 @@ function renderStrip(model){
     const rw=LO(loop?stripRow[i]:0);
     h+=`<b class="sd${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${waitTxt(myEta,true)}`:mine&&myDash?" · --":"");
-    h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}${lensFar(i)?" far":""}" style="left:${SX(i)}%"><span>${lab}</span></span>`;
+    h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}${lensFar(i)?" far":""}" style="left:${SX(i)}%${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span>${lab}</span></span>`;
   });
   // destination
   if(!loop) h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
@@ -1726,7 +1730,7 @@ function renderLoopStrip(model){
     const q=loopAt(stripU[i]), x=pc(q.x), cl=`${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}`;
     h+=`<b class="sd${cl}" data-code="${esc(s.code)}" style="left:${x}%;top:${q.y}px" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${waitTxt(myEta,true)}`:mine&&myDash?" · --":"");
-    h+=`<span class="slab${x>50?" r":""}${cl}${q.lo?" lo":""}${lensFar(i)?" far":""}" style="left:${x}%;top:${q.lo?q.y+8:q.y-8}px"><span>${lab}</span></span>`;
+    h+=`<span class="slab${x>50?" r":""}${cl}${q.lo?" lo":""}${lensFar(i)?" far":""}" style="left:${x}%;top:${q.lo?q.y+8:q.y-8}px${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span>${lab}</span></span>`;
   });
   for(const b of model){
     const cls=(b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":""), f=loopAt(stripUraw(b.along)), n=loopAt(stripUraw(busNowAlong(b)));
@@ -1838,6 +1842,12 @@ $("diag").addEventListener("toggle",()=>{ if($("diag").open) $("dbg").textConten
 $("moreBtn").addEventListener("click",()=>{ BOARD_ALL=!BOARD_ALL; renderBoard(lastModel); });
 $("board").addEventListener("click",e=>{ const r=e.target.closest(".brow[data-ref]"); if(r) selectBus(r.dataset.ref); });
 $("diagram").addEventListener("click",e=>{const r=e.target.closest(".srow");if(r)tapStation(r.dataset.code);});
+let lensFT=50, lensFRaf=0, lensFPrev=0;
+function setLensTarget(f,jump){ lensFT=f;
+  if(jump){ lensF=f; cancelAnimationFrame(lensFRaf); lensFRaf=0; return; }
+  if(!lensFRaf){ lensFPrev=0; lensFRaf=requestAnimationFrame(function step(now){ const dt=Math.min(64,now-(lensFPrev||now-16)); lensFPrev=now;
+    lensF+=(lensFT-lensF)*(1-Math.exp(-dt/60)); if(Math.abs(lensFT-lensF)<0.05) lensF=lensFT;
+    renderStrip(lastModel||[]); lensMap(); lensFRaf=lensF===lensFT?0:requestAnimationFrame(step); }); } }
 const easeOut=t=>1-Math.pow(1-t,3), easeInOut=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
 // ---- the map follows the lens: it frames the stretch of route under the magnified part (outlined), following the
 // finger smoothly (per-frame exponential smoothing of centre and zoom = a natural ease-out that never stops and restarts),
@@ -1884,7 +1894,7 @@ if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ 
   const at=(x,y)=>{const r=$("stripIn").getBoundingClientRect(), p=Math.max(0,Math.min(100,(x-r.left)/r.width*100));
     return LOOPK>=0&&LG?loopProj(x-r.left,y-r.top):p; };
   const startLens=()=>{ if(lensOn||!down) return; lensOn=true; clearTimeout(holdT); cancelAnimationFrame(lensAnim);
-    lensF=at(lastX,lastY); el.classList.add("lensing");
+    setLensTarget(at(lastX,lastY),!parked&&lensK<=0); el.classList.add("lensing");
     const s0=performance.now(), k0=lensK; const grow=now=>{ const t=Math.min(1,(now-s0)/180); lensK=k0+(1-k0)*easeOut(t); ask(); lensMap(); if(t>=1) lensK=1; if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); };
     lensAnim=requestAnimationFrame(grow); };
   const closeLens=()=>{ parked=false; clearTimeout(parkT); lensOn=false; cancelAnimationFrame(lensAnim);
@@ -1898,7 +1908,7 @@ if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ 
     holdT=setTimeout(startLens,180); e.preventDefault(); });
   el.addEventListener("pointermove",e=>{ if(!down) return; lastX=e.clientX; lastY=e.clientY;
     if(!moved&&Math.hypot(e.clientX-x0,e.clientY-y0)>6){ moved=true; startLens(); }
-    if(lensOn){ lensF=at(e.clientX,e.clientY); ask(); lensMap(); } });
+    if(lensOn){ setLensTarget(at(e.clientX,e.clientY)); } });
   const release=e=>{ if(!down) return; down=false; clearTimeout(holdT); try{ el.releasePointerCapture(e.pointerId); }catch(_){}
     if(!lensOn){   // quick tap: a bus tag selects that bus; elsewhere the nearest station (in the lens if it's open)
       const wasParked=parked;
