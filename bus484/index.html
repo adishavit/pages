@@ -268,7 +268,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v112";
+const VERSION="v113";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1520,7 +1520,7 @@ function lensX(x){ return lensGen(x,stripLo,stripHi); }
 // pile-ups). M adapts to the local spacing: just enough for ~LENS_TARGET px between stations, 1 (no lens) where they
 // already are that far apart (wide screens, sparse lines).
 const LENS_CORE=30, LENS_WIN=150, LENS_TARGET=44, LENS_MMAX=3.5, LENS_QMIN=0.45;
-let lensGainF=null, lensGainV=1, lensSpread=1;   // lensSpread: >1 while the lens disperses on release
+let lensGainF=null, lensGainV=1, lensSpread=1;   // lensSpread: <1 while the lens deflates on release
 function lensUnits(){ const loop=LOOPK>=0&&LG; return {loop, ppu:loop?1:($("stripIn").clientWidth||360)/100}; }
 function lensMag(){   // wanted magnification at the finger
   if(lensGainF===lensF) return lensGainV; lensGainF=lensF;
@@ -1848,7 +1848,7 @@ function setLensTarget(f,jump){ lensFT=f;
   if(!lensFRaf){ lensFPrev=0; lensFRaf=requestAnimationFrame(function step(now){ const dt=Math.min(64,now-(lensFPrev||now-16)); lensFPrev=now;
     lensF+=(lensFT-lensF)*(1-Math.exp(-dt/60)); if(Math.abs(lensFT-lensF)<0.05) lensF=lensFT;
     renderStrip(lastModel||[]); lensMap(); lensFRaf=lensF===lensFT?0:requestAnimationFrame(step); }); } }
-const LENS_SETTLE_MS=630, LENS_DIFF_T=0.08;   // lens settling back to normal; diffusion time scale (width x2 after 0.24 s)
+const LENS_SETTLE_MS=630;   // lens settling back to normal
 const smootherstep=t=>t*t*t*(t*(t*6-15)+10);   // Perlin: zero speed and zero acceleration at both ends
 const easeOut=t=>1-Math.pow(1-t,3), easeInOut=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
 // ---- the map follows the lens: it frames the stretch of route under the magnified part (outlined), following the
@@ -1900,9 +1900,9 @@ if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ 
     const s0=performance.now(), k0=lensK; lensSpread=1; const grow=now=>{ const t=Math.min(1,(now-s0)/180); lensK=k0+(1-k0)*easeOut(t); ask(); lensMap(); if(t>=1) lensK=1; if(lensK<1&&down) lensAnim=requestAnimationFrame(grow); };
     lensAnim=requestAnimationFrame(grow); };
   const closeLens=()=>{ parked=false; clearTimeout(parkT); lensOn=false; cancelAnimationFrame(lensAnim);
-    const s0=performance.now(), k0=lensK; const shrink=now=>{ const t=(now-s0)/1000, u=Math.min(1,t*1000/LENS_SETTLE_MS), sp=Math.sqrt(1+t/LENS_DIFF_T);
-      // disperses like a diffusing bump: it widens as sqrt(t) and flattens as 1/width (spacing conserved), and fades out
-      lensSpread=u>=1?1:sp; lensK=u>=1?0:k0*(1-smootherstep(u))/sp; ask();
+    const s0=performance.now(), k0=lensK; const shrink=now=>{ const u=Math.min(1,(now-s0)/LENS_SETTLE_MS), e=smootherstep(u);
+      // deflates like a bubble: the magnified area shrinks inward (to 60% of its width) while it flattens to nothing
+      lensSpread=u>=1?1:1-0.4*e; lensK=u>=1?0:k0*(1-e); ask();
       if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); };
     lensAnim=requestAnimationFrame(shrink); lensMapEnd(); };
   let tagRef=null;
