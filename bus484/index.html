@@ -268,7 +268,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v110";
+const VERSION="v111";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1848,7 +1848,7 @@ function setLensTarget(f,jump){ lensFT=f;
   if(!lensFRaf){ lensFPrev=0; lensFRaf=requestAnimationFrame(function step(now){ const dt=Math.min(64,now-(lensFPrev||now-16)); lensFPrev=now;
     lensF+=(lensFT-lensF)*(1-Math.exp(-dt/60)); if(Math.abs(lensFT-lensF)<0.05) lensF=lensFT;
     renderStrip(lastModel||[]); lensMap(); lensFRaf=lensF===lensFT?0:requestAnimationFrame(step); }); } }
-const LENS_SETTLE_MS=420;   // lens settling back to normal
+const LENS_SETTLE_MS=630;   // lens settling back to normal
 const smootherstep=t=>t*t*t*(t*(t*6-15)+10);   // Perlin: zero speed and zero acceleration at both ends
 const easeOut=t=>1-Math.pow(1-t,3), easeInOut=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
 // ---- the map follows the lens: it frames the stretch of route under the magnified part (outlined), following the
