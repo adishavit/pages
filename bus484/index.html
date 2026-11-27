@@ -273,7 +273,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v132";
+const VERSION="v133";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1785,7 +1785,7 @@ function renderStrip(model){
   if(LOOPK>=0&&LG) return renderLoopStrip(model);
   const fb=focusBus(model), busA=fb?busNowAlong(fb):-1;
   // grey out whole stretches only once the bus has cleared them: up to the last station it has passed
-  const passedA=fb?Math.max(-1,...stops.filter(s=>s.along<=busA+30).map(s=>s.along)):-1;
+  const passedA=fb?Math.max(-1,...stops.filter(s=>s.along<busA-30).map(s=>s.along)):-1;   // stations the followed bus has actually left behind
   const nextIdx=fb?stops.map((s,i)=>i).filter(i=>stops[i].along>busA+30).slice(0,4):[];
   const L=(a0,a1)=>{const x0=stripX(a0),x1=stripX(a1);return {l:Math.min(x0,x1),w:Math.max(.3,Math.abs(x1-x0))};};
   const LO=r=>r?" lo":"", loop=LOOPK>=0;
@@ -1833,7 +1833,7 @@ function renderStrip(model){
       return {i,pri:labPri(i,nextIdx[0],firsts,true),w,qf:ww=>labQuad(x,44,ww,false,false,a)}; })); })();
   setLabShown(shownL);
   stops.forEach((s,i)=>{
-    const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
+    const mine=s.code===MY_STOP, past=passedA>=0&&s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
     const dest=s.code===TO_STOP;
     const rw=LO(loop?stripRow[i]:0);
     h+=`<b class="sd${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
@@ -1863,7 +1863,7 @@ function upcomingTrips(model){
 function renderLoopStrip(model){
   const el=$("stripIn"), G=LG, pc=v=>v/G.W*100, now=Date.now();
   const fb=focusBus(model), busA=fb?busNowAlong(fb):-1;
-  const passedA=fb?Math.max(-1,...stops.filter(s=>s.along<=busA+30).map(s=>s.along)):-1;
+  const passedA=fb?Math.max(-1,...stops.filter(s=>s.along<busA-30).map(s=>s.along)):-1;   // stations the followed bus has actually left behind
   const nextIdx=fb?stops.map((s,i)=>i).filter(i=>stops[i].along>busA+30).slice(0,4):[];
   const PL=a=>loopLens(loopP(stripUraw(a)));
   const poly=(a0,a1)=>{ const P0=PL(a0),P1=PL(a1),n=Math.max(1,Math.ceil(Math.abs(P1-P0)/5)), pts=[];
@@ -1907,7 +1907,7 @@ function renderLoopStrip(model){
       return {i,pri:labPri(i,nextIdx[0],firsts,true),w,qf:ww=>labQuad(q.x,q.lo?q.y+8:q.y-8,ww,false,q.lo,a)}; })); })();
   setLabShown(shownL);
   stops.forEach((s,i)=>{
-    const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i), dest=s.code===TO_STOP;
+    const mine=s.code===MY_STOP, past=passedA>=0&&s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i), dest=s.code===TO_STOP;
     const q=loopAt(stripU[i]), x=pc(q.x), cl=`${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}`;
     h+=`<b class="sd${cl}" data-code="${esc(s.code)}" style="left:${x}%;top:${q.y}px" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${waitTxt(myEta,true)}`:mine&&myDash?" · --":"");
