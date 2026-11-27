@@ -209,6 +209,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 .nowln{position:relative;text-align:center;margin:6px 0;font-size:11px;color:var(--acc);font-weight:700}
 .nowln::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:2px solid var(--acc)}
 .nowln span{position:relative;background:var(--bg);padding:0 8px;text-transform:uppercase;letter-spacing:.05em}
+.nowln.day{color:var(--fg);margin-top:10px}.nowln.day::before{border-top:1px solid var(--line)}
 .sbus.gone{opacity:.55;box-shadow:none}   /* past my stop: same colour (= data freshness), just lighter */
 .sfix.gone{opacity:.55}
 .bm.gone{opacity:.6}
@@ -286,7 +287,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v143"; window.__appStarted=true;
+const VERSION="v144"; window.__appStarted=true;
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1449,7 +1450,10 @@ function renderBoard(model){
   if(!p.length){const ns=nextServiceText();
     if(LINE_FAIL&&!rides.length){ el.innerHTML=h+`<div class="card">Timetable server not responding. Retrying…</div>`; return; }
     el.innerHTML=h+`<div class="card">No more ${esc(title.num)} buses today at <span class="rtl">${esc(s.name)}</span>.${ns?`<br>${ns}`:""}</div>`;return;}
+  // buses on a later day (e.g. after Shabbat) get a day heading, so their times aren't read as today's
+  const dkey=t=>new Date(t).toLocaleDateString("sv",{timeZone:TZ}); let lastDay=dkey(now);
   for(const x of p){
+    if(dkey(x.t)!==lastDay){ lastDay=dkey(x.t); h+=`<div class="nowln day"><span>${new Date(x.t).toLocaleDateString("en-GB",{timeZone:TZ,weekday:"long",day:"numeric",month:"short"})}</span></div>`; }
     const b=x.ref?bym.get(x.ref):null, m=Math.max(0,Math.round((x.t-now)/60000));
     const st=b&&b.start!=null?b.start:x.ref?startOf(x.ref):x.t-(s.off||0)*1000;
     const badge=x.src==="tt"?`<span class="badge b-old">scheduled</span>`:b?(b.live?`<span class="badge b-live">live</span>`:`<span class="badge b-str">recent</span>`):`<span class="badge b-str">expected</span>`;
