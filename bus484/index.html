@@ -79,6 +79,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .strk .chev{fill:none;stroke:#fff;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.95}
 .strk .chev.past{stroke:#666;opacity:.8}.strk .chev.nodata{stroke:var(--acc);opacity:1}
 /* .slab.far: faded while the lens is on; opacity set inline from the lens strength so it eases with it */
+.mchev{display:block;overflow:visible}.mchev path{fill:none;stroke:#fff;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .strk .snEnd{stroke:var(--acc);stroke-width:3;stroke-linecap:round;opacity:.8}
 .sbus.up{background:var(--bg,#fff)!important;color:var(--str);box-shadow:none;border:1.5px dashed var(--str);line-height:11px;cursor:default;opacity:.85}
 .sbus.up::after,.sbus.up::before{background:var(--str);opacity:.5;margin-left:0!important}
@@ -269,7 +270,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v128";
+const VERSION="v129";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -541,9 +542,10 @@ if(HAVE_MAP){
   L.control.attribution({position:"topright",prefix:false}).addTo(map);
   setMapStyle(MAP_STYLE,true);
   map.createPane("warnPane").style.zIndex=440;    // ⚠️ jam marks: above the lines, below stations and buses
-  map.createPane("stopsPane").style.zIndex=450;   // stations above the route and congestion lines, below bus markers
+  map.createPane("stopsPane").style.zIndex=450;
+  { const cp=map.createPane("chevPane"); cp.style.zIndex=445; cp.style.pointerEvents="none"; }   // direction chevrons: above lines, below stations   // stations above the route and congestion lines, below bus markers
   stopLayer=L.layerGroup().addTo(map); hotLayer=L.layerGroup().addTo(map); trailLayer=L.layerGroup().addTo(map); estLayer=L.layerGroup().addTo(map); meLayer=L.layerGroup().addTo(map);
-  const zc=()=>{ map.getContainer().classList.toggle("far",map.getZoom()<12); map.getContainer().classList.toggle("near",map.getZoom()>=16); }; map.on("zoomend",zc); zc();
+  const zc=()=>{ map.getContainer().classList.toggle("far",map.getZoom()<12); map.getContainer().classList.toggle("near",map.getZoom()>=16); }; map.on("zoomend",zc); zc(); { let chevT=0; map.on("zoomend moveend",()=>{ clearTimeout(chevT); chevT=setTimeout(drawChevrons,150); }); }   // after the map settles
 
 }else{ $("map").innerHTML='<p style="padding:5em 1em">Map library failed to load. Lists still update.</p>'; log("Leaflet missing"); }
 function sheetH(){return $("sheet").getBoundingClientRect().height||190;}
@@ -622,9 +624,24 @@ function drawStops(){
       .on("click",()=>tapStation(s.code)).addTo(stopLayer);
     stopMarks.push({i,m:stopLayer.getLayers()[stopLayer.getLayers().length-1]});
   });
-  if(!fitted&&stops.length){ if(!window.MAP_CARRY) fitRoute(); fitted=true; }   // switched direction/line: keep the map exactly where it was
+  if(!fitted&&stops.length){ if(!window.MAP_CARRY) fitRoute(); fitted=true; }
+  drawChevrons();   // switched direction/line: keep the map exactly where it was
   declutterMap();
 }
+// direction chevrons on the route: small white ">" every ~90 px of screen, where there is room (not within 22 px of a
+// station); redrawn after each zoom
+let chevLayer=null;
+function drawChevrons(){ if(!HAVE_MAP||routePts.length<2||!stops.length) return;
+  if(!chevLayer) chevLayer=L.layerGroup().addTo(map); chevLayer.clearLayers();
+  const L0=routeLen(), z=map.getZoom(); let px=0;
+  for(let i=1;i<routePts.length;i++) px+=map.project(routePts[i-1],z).distanceTo(map.project(routePts[i],z));
+  if(px<60) return;
+  const step=L0*90/px, sp=stops.map(s=>map.project([s.lat,s.lon],z)), vb=map.getBounds().pad(0.3);
+  for(let a=step/2;a<L0-step/4;a+=step){ const ll=pointAt(a); if(!vb.contains(ll)) continue;
+    const p=map.project(ll,z); if(sp.some(q=>q.distanceTo(p)<22)) continue;
+    const ang=routeBearing(a)-90;
+    L.marker(ll,{pane:"chevPane",interactive:false,keyboard:false,icon:L.divIcon({className:"",iconSize:[0,0],
+      html:`<svg class="mchev" width="10" height="10" viewBox="-5 -5 10 10" style="transform:translate(-5px,-5px) rotate(${ang.toFixed(0)}deg)"><path d="M-1.8 -2.6 L1.6 0 L-1.8 2.6"/></svg>`})}).addTo(chevLayer); } }
 // map labels mirror the strip: a name left out on the strip is left out on the map too (one decision, made where
 // space is tightest). Ends of the line always keep their names on the map.
 let stopMarks=[], LAB_SHOWN=null, labSig="";
