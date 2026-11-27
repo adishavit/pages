@@ -269,7 +269,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v120";
+const VERSION="v121";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -396,7 +396,8 @@ async function loadLine(){
       stops=ok.map(r=>({seq:r.stop_sequence,name:r.gtfs_stop__name,city:r.gtfs_stop__city,lat:r.gtfs_stop__lat,lon:r.gtfs_stop__lon,code:String(r.gtfs_stop__code),
         off:Math.round((Date.parse(r.arrival_time)-st0)/1000)}));
       { const c0=ok[0].gtfs_stop__city||"", c1=ok[ok.length-1].gtfs_stop__city||"", same=c0===c1;
-        const loop=String(route.route_direction)==="3"||dist(ok[0].gtfs_stop__lat,ok[0].gtfs_stop__lon,ok[ok.length-1].gtfs_stop__lat,ok[ok.length-1].gtfs_stop__lon)<300;
+        // circular only if it really ends where it starts: direction "3" is not reliable (433 Jerusalem -> Rishon has it)
+        const loop=dist(ok[0].gtfs_stop__lat,ok[0].gtfs_stop__lon,ok[ok.length-1].gtfs_stop__lat,ok[ok.length-1].gtfs_stop__lon)<300;
         title={num:route.route_short_name||LINE,from:same?shortName(ok[0].gtfs_stop__name||c0):c0,to:same?shortName(ok[ok.length-1].gtfs_stop__name||c1):c1,city:same?c0:"",loop}; }
       log(`stops: ${stops.length} (timing from ride ${ref.id})`);
     }
@@ -444,7 +445,9 @@ function parseRouteName(r){ const p=String(r.route_long_name||"").split("<->");
     const i=x.lastIndexOf("-"); return i<0?{stop:x,city:""}:{stop:x.slice(0,i).trim(),city:x.slice(i+1).trim()}; };
   const a=side(p[0],false), b=side(p[1],true); return {fromStop:a.stop,fromCity:a.city,toStop:b.stop,toCity:b.city}; }
 // labels: intercity -> cities; same city -> terminal stops (+ city); circular (direction 3) -> ↺
-function prettyRoute(r){ const n=parseRouteName(r), loop=String(r.route_direction)==="3";
+function prettyRoute(r){ const n=parseRouteName(r);
+  // picker (no coordinates yet): circular if direction "3" and both ends in the same city (433, direction 3, is intercity)
+  const loop=String(r.route_direction)==="3"&&!!n.fromCity&&n.fromCity===n.toCity;
   if(n.fromCity&&n.fromCity!==n.toCity) return {from:n.fromCity,to:n.toCity,loop};
   return {from:shortName(n.fromStop)||n.fromCity,to:shortName(n.toStop)||n.toCity,city:n.fromCity,loop}; }
 function switchTo(ref,line){ const p=new URLSearchParams();p.set("line",line||LINE);p.set("ref",ref);location.search=p.toString(); }
@@ -1476,7 +1479,7 @@ function stripLayout(){
   const w=[];
   for(let i=0;i<stops.length-1;i++){
     const dt=stops[i+1].off-stops[i].off, da=stops[i+1].along-stops[i].along;
-    w.push(Number.isFinite(dt)&&dt>0?Math.sqrt(Math.max(30,dt)):0.6+Math.log1p(Math.max(0,da)/300));
+    w.push(Math.max(0.35,Math.log1p(Math.max(0,da)/250)));   // spacing ~ log of the distance between stations (long highway legs compressed)
   }
   // long one-way lines: fold at the middle (by strip spacing) into a snake, so each station gets twice the width
   if(LOOPK<0&&!title.loop&&stops.length>=SNAKE_MIN_STOPS&&($("stripIn").clientWidth||360)/stops.length<24){ const tot=w.reduce((a,b)=>a+b,0); let u=0,k=0;   // only when crowded (not on a wide screen)
