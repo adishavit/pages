@@ -82,7 +82,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .strk .chev{fill:none;stroke:#fff;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.95}
 .strk .chev.past{stroke:#666;opacity:.8}.strk .chev.nodata{stroke:var(--acc);opacity:1}
 /* .slab.far: faded while the lens is on; opacity set inline from the lens strength so it eases with it */
-.mchev{display:block;overflow:visible}.mchev path{fill:none;stroke:#fff;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.mchev{display:block;overflow:visible}.mchev path{fill:none;stroke:#fff;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.mchev.blue path{stroke:#0d47a1}
 .strk .snEnd{stroke:var(--acc);stroke-width:3;stroke-linecap:round;opacity:.8}
 .sbus.up{background:var(--bg,#fff)!important;color:var(--str);box-shadow:none;border:1.5px dashed var(--str);line-height:11px;cursor:default;opacity:.85}
 .sbus.up::after,.sbus.up::before{background:var(--str);opacity:.5;margin-left:0!important}
@@ -273,7 +273,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v130";
+const VERSION="v132";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -467,6 +467,25 @@ function prettyRoute(r){ const n=parseRouteName(r);
   const loop=String(r.route_direction)==="3"&&!!n.fromCity&&n.fromCity===n.toCity;
   if(n.fromCity&&n.fromCity!==n.toCity) return {from:n.fromCity,to:n.toCity,loop};
   return {from:shortName(n.fromStop)||n.fromCity,to:shortName(n.toStop)||n.toCity,city:n.fromCity,loop}; }
+// Switch direction in place, no page reload (that blanked the screen): fetch the other direction's timetable and road
+// first, then swap the scene in one go. The map stays where it is.
+let switching=false;
+async function switchDirInPlace(ref){
+  if(switching) return; switching=true;
+  try{
+    const prevRef=REF; REF=+ref;
+    await loadLine();
+    if(!stops.length){ REF=prevRef; throw new Error("no timetable"); }
+    MY_STOP=load("mystop:"+LINE+":"+REF)||""; TO_STOP=load("tostop:"+LINE+":"+REF)||""; SEL_BUS=null; CARD_OPEN=false;
+    for(const m of [vehicles,rideStart,vehTrip,liveEta]) m.clear(); newestMs=null; strideNewestMs=null; liveTurn=0; liveRetryAt=0;
+    predLog.clear(); passed.clear(); tomorrow=null; lastModel=[]; refresh.backfill=false;
+    prof=null; sectionSig=""; probeRows=[]; probeAt=0; zoneStops=[]; zoneAlong=[];
+    road=null; roadFailed=false;
+    await loadRoad();                       // cached road: instant; else fetched (drawStops runs inside)
+    setUrl(); drawStops(); renderTitle(); render(); loadStopZones(); fetchProbes(); if(!inFlight) refresh();
+    log(`switched to line_ref ${REF} in place`);
+  }catch(e){ log("in-place switch failed ("+e.message+"): reloading"); switchTo(ref,LINE); }
+  finally{ switching=false; } }
 function switchTo(ref,line){   // keep the map where it is across the reload; the new line then glides into view
   try{ if(HAVE_MAP){ const c=map.getCenter(); sessionStorage.setItem("mapView",JSON.stringify({lat:c.lat,lng:c.lng,z:map.getZoom()})); } }catch(_){}
   const p=new URLSearchParams();p.set("line",line||LINE);p.set("ref",ref);
@@ -642,9 +661,9 @@ function drawChevrons(){ if(!HAVE_MAP||routePts.length<2||!stops.length) return;
   const step=L0*90/px, sp=stops.map(s=>map.project([s.lat,s.lon],z)), vb=map.getBounds().pad(0.3);
   for(let a=step/2;a<L0-step/4;a+=step){ const ll=pointAt(a); if(!vb.contains(ll)) continue;
     const p=map.project(ll,z); if(sp.some(q=>q.distanceTo(p)<22)) continue;
-    const ang=routeBearing(a)-90;
+    const ang=routeBearing(a)-90, k=prof?Math.floor(a/prof.C):-1, lv=prof&&k<prof.n?cellLevel(k):null;
     L.marker(ll,{pane:"chevPane",interactive:false,keyboard:false,icon:L.divIcon({className:"",iconSize:[0,0],
-      html:`<svg class="mchev" width="10" height="10" viewBox="-5 -5 10 10" style="transform:translate(-5px,-5px) rotate(${ang.toFixed(0)}deg)"><path d="M-1.8 -2.6 L1.6 0 L-1.8 2.6"/></svg>`})}).addTo(chevLayer); } }
+      html:`<svg class="mchev${lv==null?" blue":""}" width="10" height="10" viewBox="-5 -5 10 10" style="transform:translate(-5px,-5px) rotate(${ang.toFixed(0)}deg)"><path d="M-1.8 -2.6 L1.6 0 L-1.8 2.6"/></svg>`})}).addTo(chevLayer); } }
 // map labels mirror the strip: a name left out on the strip is left out on the map too (one decision, made where
 // space is tightest). Ends of the line always keep their names on the map.
 let stopMarks=[], LAB_SHOWN=null, labSig="";
@@ -652,12 +671,54 @@ function declutterMap(){ if(!HAVE_MAP||!LAB_SHOWN) return;
   for(const {i,m} of stopMarks){ const t=m.getTooltip&&m.getTooltip(), el=t&&t.getElement&&t.getElement(); if(!el) continue;
     el.style.visibility=LAB_SHOWN.has(i)||i===0||i===stops.length-1?"":"hidden"; } }
 function setLabShown(set){ LAB_SHOWN=set; const sig=[...set.keys()].sort((a,b)=>a-b).join(","); if(sig!==labSig){ labSig=sig; declutterMap(); } }
+// ---- the road the bus really drives. A car router (OSRM) asked to pass through every stop loops around blocks where a
+// car can't reach a bus stop (bus lanes, one-way streets: Begin Rd in Tel Aviv). So: take the GPS track of a recent trip
+// of this line, snap it to the roads with Valhalla's map matching (bus profile), and use it wherever it covers both
+// stops of a stretch; the router's path fills the rest (e.g. ends where the bus stopped reporting). Cached for a week.
+const VALHALLA="https://valhalla1.openstreetmap.de";
+function dec6(s){ let i=0,lat=0,lng=0; const out=[];
+  while(i<s.length){ let b,sh=0,r=0; do{b=s.charCodeAt(i++)-63;r|=(b&31)<<sh;sh+=5;}while(b>=32); lat+=(r&1)?~(r>>1):(r>>1);
+    sh=0;r=0; do{b=s.charCodeAt(i++)-63;r|=(b&31)<<sh;sh+=5;}while(b>=32); lng+=(r&1)?~(r>>1):(r>>1); out.push([lat/1e6,lng/1e6]); }
+  return out; }
+function polyCum(P){ const c=[0]; for(let i=1;i<P.length;i++) c.push(c[i-1]+dist(P[i-1][0],P[i-1][1],P[i][0],P[i][1])); return c; }
+function projAfter(P,C,lat,lon,from){ const kx=Math.cos(lat*Math.PI/180)*111320,ky=110540; let best={a:from,d:Infinity};
+  for(let i=1;i<P.length;i++){ if(C[i]<from) continue; const[ay,ax]=P[i-1],[by,bx]=P[i], ux=(bx-ax)*kx,uy=(by-ay)*ky,px=(lon-ax)*kx,py=(lat-ay)*ky,L2=ux*ux+uy*uy;
+    const t=L2?Math.max(0,Math.min(1,(px*ux+py*uy)/L2)):0, d=Math.hypot(px-t*ux,py-t*uy); if(d<best.d-5) best={a:Math.max(from,C[i-1]+t*(C[i]-C[i-1])),d}; }
+  return best; }
+function polySlice(P,C,a,b){ const at=x=>{ let i=1; while(i<C.length-1&&C[i]<x) i++; const s=C[i]-C[i-1], t=s?(x-C[i-1])/s:0; return [P[i-1][0]+(P[i][0]-P[i-1][0])*t,P[i-1][1]+(P[i][1]-P[i-1][1])*t]; };
+  const o=[at(a)]; for(let i=0;i<C.length;i++) if(C[i]>a&&C[i]<b) o.push(P[i]); o.push(at(b)); return o; }
+async function loadTracedRoad(){
+  if(stops.length<2||!road||roadFailed) return;
+  const key="road3:"+REF+":"+stops.map(s=>s.code).join(",");
+  const c=load(key); if(c){ try{ const o=JSON.parse(c); if(Date.now()-o.t<7*864e5){ if(loadTracedRoad.done!==key){ road=o.p; loadTracedRoad.done=key; log(`road: traced (cache, ${o.cov}/${stops.length-1} stretches)`); drawStops(); render(); } return; } }catch(_){} }
+  if(loadTracedRoad.busy) return; loadTracedRoad.busy=true;
+  try{
+    const now=Date.now(), rr=await getJSON("trace-rides",`${API}/siri_rides/list?siri_route__line_refs=${REF}&scheduled_start_time_from=${new Date(now-8*864e5).toISOString()}&scheduled_start_time_to=${new Date(now-3*3600e3).toISOString()}&limit=12&order_by=scheduled_start_time%20desc`);
+    let best=null, bestCov=-1;
+    for(const rd of rr.slice(0,4)){ const pos=await getJSON("trace-pos",`${API}/siri_vehicle_locations/list?siri_rides__ids=${rd.id}&limit=3000&order_by=recorded_at_time%20asc`);
+      const cov=stops.filter(s=>pos.some(p=>dist(p.lat,p.lon,s.lat,s.lon)<250)).length; if(cov>bestCov){ bestCov=cov; best=pos; } }
+    if(!best||best.length<8) throw new Error("no recorded trip");
+    const shape=best.map(p=>({lat:p.lat,lon:p.lon,time:Math.round(Date.parse(p.recorded_at_time)/1000)}));
+    const res=await fetch(VALHALLA+"/trace_route",{method:"POST",body:JSON.stringify({shape,costing:"bus",shape_match:"map_snap",trace_options:{search_radius:60}})});
+    const j=await res.json(); if(!j.trip) throw new Error("map matching: "+(j.error||res.status));
+    const T=j.trip.legs.flatMap(l=>dec6(l.shape)), TC=polyCum(T), O=road, OC=polyCum(O);
+    const out=[]; let ta=0, oa=0, cov=0; const tp=[], op=[];
+    for(const s of stops){ const t=projAfter(T,TC,s.lat,s.lon,ta), o=projAfter(O,OC,s.lat,s.lon,oa); tp.push(t); op.push(o); if(t.d<60) ta=t.a; oa=o.a; }
+    for(let i=0;i<stops.length-1;i++){
+      const useT=tp[i].d<60&&tp[i+1].d<60&&tp[i+1].a>tp[i].a;
+      const seg=useT?polySlice(T,TC,tp[i].a,tp[i+1].a):polySlice(O,OC,op[i].a,op[i+1].a); if(useT) cov++;
+      out.push(...(out.length?seg.slice(1):seg)); }
+    if(cov===0) throw new Error("recorded trip doesn't match the stops");
+    road=out; store(key,JSON.stringify({t:Date.now(),p:out,cov})); loadTracedRoad.done=key;
+    log(`road: traced from a recorded trip (${best.length} positions), ${cov}/${stops.length-1} stretches; router for the rest`); drawStops(); render();
+  }catch(e){ log("traced road not available: "+e.message); }
+  finally{ loadTracedRoad.busy=false; } }
 async function loadRoad(){
   if(stops.length<2) return;
   // cached by line + station codes (stable), so the timetable's slightly different coordinates don't cause a re-fetch
   const key="road2:"+REF+":"+stops.map(s=>s.code).join(","), oldKey="road:"+stops.map(s=>(+s.lat).toFixed(4)+","+(+s.lon).toFixed(4)).join(";");
-  if(road&&loadRoad.forKey===key) return;
-  const c=load(key)||load(oldKey); if(c){try{road=JSON.parse(c);loadRoad.forKey=key;store(key,c);log(`road: ${road.length} pts (cache)`);drawStops();render();return;}catch(_){}}
+  if(road&&loadRoad.forKey===key){ loadTracedRoad(); return; }
+  const c=load(key)||load(oldKey); if(c){try{road=JSON.parse(c);loadRoad.forKey=key;store(key,c);log(`road: ${road.length} pts (cache)`);drawStops();render();loadTracedRoad();return;}catch(_){}}
   try{
     const coords=stops.map(s=>(+s.lon).toFixed(6)+","+(+s.lat).toFixed(6)).join(";");
     let d;
@@ -665,7 +726,7 @@ async function loadRoad(){
     catch(e){ log("road via relay failed, trying OSRM directly"); d=await getJSON("road",`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`,TIMEOUT_MS,false); }
     if(d.code!=="Ok") throw new Error("OSRM "+d.code);
     road=d.routes[0].geometry.coordinates.map(([x,y])=>[y,x]); store(key,JSON.stringify(road)); loadRoad.forKey=key; roadFailed=false;
-    log(`road: ${road.length} pts, ${(d.routes[0].distance/1000).toFixed(1)} km`); drawStops(); render();
+    log(`road: ${road.length} pts, ${(d.routes[0].distance/1000).toFixed(1)} km`); drawStops(); render(); loadTracedRoad();
   }catch(e){log("road failed, straight lines: "+e.message); if(!road){ roadFailed=true; drawStops(); render(); } }
 }
 
@@ -2081,7 +2142,7 @@ function stationAt(cx,cy,filter){ const r=$("stripIn").getBoundingClientRect(), 
 })();
 function openPicker(on){ const el=$("pick"); el.hidden=!on; if(on){pickOpts=null; renderLineOpts(); renderRecent();} }
 $("lineChip").addEventListener("click",e=>{
-  if(e.target.closest("#swap")){const pk=dirPick(); if(pk){toast("Switching direction…"); switchTo(pk.line_ref,pk.route_short_name);} return;}
+  if(e.target.closest("#swap")){const pk=dirPick(); if(pk){toast("Switching direction…"); if(String(pk.route_short_name)===String(LINE)) switchDirInPlace(pk.line_ref); else switchTo(pk.line_ref,pk.route_short_name);} return;}
   openPicker($("pick").hidden);});
 $("pickX").addEventListener("click",()=>openPicker(false));
 $("recent").addEventListener("click",e=>{const b=e.target.closest(".opt");if(b)switchTo(b.dataset.ref,b.dataset.line);});
