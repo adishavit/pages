@@ -287,7 +287,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v144"; window.__appStarted=true;
+const VERSION="v145"; window.__appStarted=true;
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -2055,7 +2055,7 @@ function setSheet(i){ sheetIdx=Math.max(0,Math.min(3,i)); $("sheet").classList.t
     else glide((nh-lo)/((hi-lo)||1));
     document.documentElement.style.setProperty("--h",nh+"px");};
   const up=e=>{if(y0==null)return;sh.classList.remove("drag");glide(null);const h=sh.getBoundingClientRect().height,s=M?M.snaps:SNAP();
-    if(!moved){setSheet((sheetIdx+1)%3);}else{let bi=0;s.forEach((v,i)=>{if(Math.abs(v-h)<Math.abs(s[bi]-h))bi=i;});setSheet(bi);}y0=null;};   // tap cycles Peek → Glance → Half
+    if(!moved){setSheet(sheetIdx===1?0:1);}else{let bi=0;s.forEach((v,i)=>{if(Math.abs(v-h)<Math.abs(s[bi]-h))bi=i;});setSheet(bi);}y0=null;};   // tap: normal <-> minimal (from half/full: back to normal); bigger sizes by dragging
   for(const id of ["grab","hero"]){const el=$(id);el.addEventListener("pointerdown",down);el.addEventListener("pointermove",move);el.addEventListener("pointerup",up);el.addEventListener("pointercancel",up);}
 })();
 if(new URLSearchParams(location.search).has("debug")){ $("diag").hidden=false; $("diag").open=true; }
