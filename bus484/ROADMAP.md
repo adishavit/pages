@@ -121,3 +121,17 @@ Findings:
   adishavit.github.io repo → Settings → Pages → Enforce HTTPS (cert can take up to 24 h).
 - Unblocks: geolocation ("nearest stop" pin, hidden today), service worker/offline, PWA install.
 - Does not by itself fix the live relay being blocked on some networks (that's the workers.dev domain).
+
+## Code review follow-up (2026-11-27)
+Done: push guard (tests/bus484/check.sh as pre-push hook + GitHub Actions), dead code removed (v148), shared
+predictions memoised per second (v149), duplicated helpers merged (v150), long-session pruning (v151-152).
+Open, only if measured slow on a phone:
+- Lens frames rebuild the whole strip (desktop: ~4 ms/frame for 34 stations, full render ~13 ms). Move existing
+  elements instead of re-rendering if the lens janks on the phone.
+- Traffic model: probe positions are snapped twice per run (ASM.iter=2) and on every own-line refresh; snap once per
+  probe run and reuse. Optional grid index for snapping.
+- advance()/travelTime: precompute cumulative running time per route cell (binary search); keep the +/-30 m station
+  edge behaviour; compare old vs new on random inputs before switching.
+- Parallel fetches on load (twins, stop zones per city, tomorrow, fallback days); cache the day's timetable.
+Decided: stay buildless, single file. If modules are ever wanted, bundle back into one versioned file (esbuild) so
+the ?v= update check keeps working.
