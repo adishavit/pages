@@ -269,7 +269,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v126";
+const VERSION="v127";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -465,7 +465,9 @@ function prettyRoute(r){ const n=parseRouteName(r);
   return {from:shortName(n.fromStop)||n.fromCity,to:shortName(n.toStop)||n.toCity,city:n.fromCity,loop}; }
 function switchTo(ref,line){   // keep the map where it is across the reload; the new line then glides into view
   try{ if(HAVE_MAP){ const c=map.getCenter(); sessionStorage.setItem("mapView",JSON.stringify({lat:c.lat,lng:c.lng,z:map.getZoom()})); } }catch(_){}
-  const p=new URLSearchParams();p.set("line",line||LINE);p.set("ref",ref);location.search=p.toString(); }
+  const p=new URLSearchParams();p.set("line",line||LINE);p.set("ref",ref);
+  p.set("v",Date.now().toString(36));   // unique URL: the browser may hold an older copy of the page under the plain one (seen: switching direction loaded an old version)
+  location.search=p.toString(); }
 
 // ---------- map styles ----------
 const CARTO_KEY="cb1_5ffa_1_c34b73c1f350ef400374bf6f";   // CARTO basemaps key (free, non-commercial; public by nature: it is in every tile URL)
