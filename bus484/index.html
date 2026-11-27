@@ -282,7 +282,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v149"; window.__appStarted=true;
+const VERSION="v150"; window.__appStarted=true;
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -370,14 +370,15 @@ function fallbackDays(){ const wd=new Date(todayIL()+"T12:00:00Z").getUTCDay(); 
 const jnum=j=>String(j||"").split("_")[0];       // journey ref without its date suffix
 let NEXT_DAY="";   // set when today has no service and the timetable is the next service day's
 let LINE_FAIL="", lineRetry=0, lineRetryT=null;   // timetable lookup failed (Stride slow/down): retry with backoff
+const routesUrl=(d,line=LINE)=>`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(line)}&date_from=${d}&date_to=${d}&limit=50`;
 async function loadLine(){
   if(REF===19094) useBuiltin();
   LINE_FAIL="";
   const d=todayIL(); ttDate=d; ttShift=0;
   try{
-    let rt=await getJSON("routes",`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${d}&date_to=${d}&limit=50`);
+    let rt=await getJSON("routes",routesUrl(d));
     if(!rt.length){ for(const k of fallbackDays()){ const dd=dayIL(-k);
-        rt=await getJSON("routes-"+dd,`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dd}&date_to=${dd}&limit=50`);
+        rt=await getJSON("routes-"+dd,routesUrl(dd));
         if(rt.length){ ttDate=dd; ttShift=k; log(`no timetable for ${d} yet: using ${dd}, shifted ${k} day(s)`); break; } } }
     // no service today (e.g. Shabbat): use the next day that has it, with its real times (shown with the day name)
     NEXT_DAY="";
@@ -399,7 +400,7 @@ async function loadLine(){
     if(rides.length&&!timed(rides)&&!ttShift){
       log(`today's timetable has no times yet (${rides.length} trips): using an earlier day`);
       for(const k of fallbackDays()){ const dd=dayIL(-k);
-        const r2=(await getJSON("routes-"+dd,`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dd}&date_to=${dd}&limit=50`)).find(r=>r.line_ref===REF); if(!r2) continue;
+        const r2=(await getJSON("routes-"+dd,routesUrl(dd))).find(r=>r.line_ref===REF); if(!r2) continue;
         const rd=await getJSON("rides-"+dd,`${API}/gtfs_rides/list?gtfs_route_id=${r2.id}&limit=200`); if(!timed(rd)) continue;
         const sh=t=>t?new Date(Date.parse(t)+k*86400000).toISOString():t;
         rides=rd.map(r=>({...r,start_time:sh(r.start_time),end_time:sh(r.end_time)})).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time));
@@ -407,7 +408,7 @@ async function loadLine(){
     // just after midnight, the evening's last trips belong to yesterday's timetable (times like 24:30): add those
     // that started in the last 4 hours
     if(!ttShift&&!NEXT_DAY&&+new Date().toLocaleString("en-GB",{hour:"2-digit",hour12:false,timeZone:TZ})<4){ try{
-      const dd=dayIL(-1), r0=(await getJSON("routes-"+dd,`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dd}&date_to=${dd}&limit=50`)).find(r=>r.line_ref===REF);
+      const dd=dayIL(-1), r0=(await getJSON("routes-"+dd,routesUrl(dd))).find(r=>r.line_ref===REF);
       if(r0){ const have=new Set(rides.map(x=>x.id)), cut=Date.now()-4*3600000;
         const late=(await getJSON("rides-"+dd,`${API}/gtfs_rides/list?gtfs_route_id=${r0.id}&limit=200`)).filter(x=>!have.has(x.id)&&Date.parse(x.start_time)>=cut);
         if(late.length){ rides=rides.concat(late).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time)); log(`after midnight: +${late.length} trips from ${dd}`); } }
@@ -743,9 +744,9 @@ async function loadRoad(){
 // routes for day k ahead (k>=1). Stride holds a day's timetable only from that day on, so for future days use the same
 // weekday a week earlier and shift its times by 7 days. -> {rt, shift(ms)}
 async function routesAhead(k){
-  let rt=await getJSON("routes+"+k,`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dayIL(k)}&date_to=${dayIL(k)}&limit=50`);
+  let rt=await getJSON("routes+"+k,routesUrl(dayIL(k)));
   if(rt.length) return {rt,shift:0};
-  rt=await getJSON("routes"+(k-7),`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(LINE)}&date_from=${dayIL(k-7)}&date_to=${dayIL(k-7)}&limit=50`);
+  rt=await getJSON("routes"+(k-7),routesUrl(dayIL(k-7)));
   return {rt,shift:7*86400000}; }
 let tomorrow=null;   // {first: ms of first departure, rides:[ms...]} or {none:true}
 async function loadTomorrow(){
@@ -905,7 +906,7 @@ const SEC_CITY=1500, SEC_HWY=4000, PROBE_MS=300000;   // fetch boxes; every 5 mi
 // tuned on synthetic jams with realistic bus density; smoothing width adapts: ~25 s of planned travel (150 m city .. 600 m highway)
 const DWELL=20;   // expected seconds stopped at each intermediate station (incl. stops with no one waiting)
 const ASM={C:100, sigmaSec:25, sigmaMin:150, sigmaMax:600, tau:300, cFree:60/3.6, cCong:-15/3.6, prior:75, minConf:0.35, iter:2};
-function routeBearing(a){const p=pointAt(a),q=pointAt(Math.min(routeLen(),a+40));const y=Math.sin((q[1]-p[1])*Math.PI/180)*Math.cos(q[0]*Math.PI/180),x=Math.cos(p[0]*Math.PI/180)*Math.sin(q[0]*Math.PI/180)-Math.sin(p[0]*Math.PI/180)*Math.cos(q[0]*Math.PI/180)*Math.cos((q[1]-p[1])*Math.PI/180);return(Math.atan2(y,x)*180/Math.PI+360)%360;}
+function routeBearing(a){const p=pointAt(a),q=pointAt(Math.min(routeLen(),a+40));return brgOf({lat:p[0],lon:p[1]},{lat:q[0],lon:q[1]});}
 const angDiff=(a,b)=>{const d=Math.abs(a-b)%360;return d>180?360-d:d;};
 function buildSections(){   // map boxes used only to FETCH positions
   const L=routeLen(), sig=routePts.length+":"+Math.round(L);
@@ -1129,8 +1130,9 @@ function methodPreds(b,s){ // every method's prediction for bus b at stop s (ms)
 function ourPred(b,s){ if(!b||b.stale) return null; const mp=methodPreds(b,s); const t=mp.traffic??mp.est; return t!=null?Math.max(Date.now(),t):null; }
 function oursTxt(t,ref){ return t!=null&&(ref==null||Math.abs(t-ref)>=60000)?` · <span title="our congestion-model estimate">ours ~<b>${hm(t)}</b></span>`:""; }
 // selected bus at stop s: {t} (our estimate, else best method), "passed", or null
+function bestPred(b,s){ const o=ourPred(b,s); if(o!=null) return o; const mp=methodPreds(b,s), k=methodRank().find(m=>mp[m]!=null); return k?mp[k]:null; }
 function selAt(sb,s){ if(!sb||!s) return null; if(busNowAlong(sb)>=s.along-30) return "passed";
-  let t=ourPred(sb,s); if(t==null){ const mp=methodPreds(sb,s), k=methodRank().find(m=>mp[m]!=null); if(k) t=Math.max(Date.now(),mp[k]); }
+  let t=bestPred(sb,s); if(t!=null) t=Math.max(Date.now(),t);
   return t==null?null:{t}; }
 // waiting time until t: "now" / "N min" / "1 h 25 min" / the clock time once it's 2 h or more away
 function waitTxt(t,short){ const m=Math.max(0,Math.round((t-Date.now())/60000));
@@ -1231,7 +1233,7 @@ function buildModel(){
     sp=Math.min(sp,25);
     // heading: from movement, else reported bearing
     let brg=null; const prev=[...fx].reverse().find(f=>f!==r&&dist(f.lat,f.lon,r.lat,r.lon)>30);
-    if(prev){const y=Math.sin((r.lon-prev.lon)*Math.PI/180)*Math.cos(r.lat*Math.PI/180),x=Math.cos(prev.lat*Math.PI/180)*Math.sin(r.lat*Math.PI/180)-Math.sin(prev.lat*Math.PI/180)*Math.cos(r.lat*Math.PI/180)*Math.cos((r.lon-prev.lon)*Math.PI/180);brg=(Math.atan2(y,x)*180/Math.PI+360)%360;}
+    if(prev) brg=brgOf(prev,r);
     else if(Number.isFinite(r.bearing)&&r.bearing>0) brg=r.bearing;
     const start=startOf(ref), ageS=Math.max(0,(now-tms(r))/1000), moveS=Math.max(0,(now-goTime(sn.along,tms(r),start,stale))/1000);
     const estAlong=stale?sn.along:(haveTraffic()?advance(sn.along,moveS):Math.min(routeLen(),sn.along+sp*moveS));   // traffic model if we have bus speeds
@@ -1796,7 +1798,7 @@ function renderStrip(model){
   }
   // remaining travel time of the followed bus to my getting-off stop (our estimate), between the bus and that stop
   { const t=toStop();
-    if(t&&fb&&!fb.stale&&busA<t.along-30){ const eta=ourPred(fb,t)??(()=>{const mp=methodPreds(fb,t),k=methodRank().find(m=>mp[m]!=null);return k?mp[k]:null;})();
+    if(t&&fb&&!fb.stale&&busA<t.along-30){ const eta=bestPred(fb,t);
       if(eta!=null){ const m=Math.max(0,Math.round((eta-Date.now())/60000));
         const gx=(stripX(Math.max(0,passedA))+SX(stops.indexOf(t)))/2;
         h+=`<span class="sgap" style="left:${gx}%" title="time left for this bus to reach your getting-off stop">~${m} min left</span>`; } } }
@@ -1869,7 +1871,7 @@ function renderLoopStrip(model){
   }
   // remaining travel time of the followed bus to my getting-off stop, inside the track between the bus and the stop
   { const t=toStop();
-    if(t&&fb&&!fb.stale&&busA<t.along-30){ const eta=ourPred(fb,t)??(()=>{const mp=methodPreds(fb,t),k=methodRank().find(m=>mp[m]!=null);return k?mp[k]:null;})();
+    if(t&&fb&&!fb.stale&&busA<t.along-30){ const eta=bestPred(fb,t);
       if(eta!=null){ const m=Math.max(0,Math.round((eta-now)/60000)), q=loopXY((PL(Math.max(0,passedA))+PL(t.along))/2);
         const gx=Math.max(G.xa+24,Math.min(G.xb-24,q.x));
         h+=`<span class="sgap" style="left:${pc(gx)}%;top:${G.yT+G.r-6}px" title="time left for this bus to reach your getting-off stop">~${m} min left</span>`; } } }
@@ -2159,7 +2161,7 @@ $("btnFit").addEventListener("click",fitRoute);
 $("accReset").addEventListener("click",()=>{acc={};store(ACC_KEY,null);renderAccuracy();toast("Accuracy stats reset");});
 $("lineOpts").addEventListener("click",e=>{const b=e.target.closest(".opt");if(b)switchTo(b.dataset.ref,b.dataset.line);});
 $("lineForm").addEventListener("submit",async e=>{e.preventDefault();const n=$("lineIn").value.trim();if(!n)return;
-  const d=todayIL();try{const rt=await getJSON("routes",`${API}/gtfs_routes/list?route_short_name=${encodeURIComponent(n)}&date_from=${d}&date_to=${d}&limit=50`);
+  const d=todayIL();try{const rt=await getJSON("routes",routesUrl(d,n));
     if(!rt.length){toast(`No line ${n} today`);return;} pickOpts=rt; renderLineOpts();}catch(err){toast("Search failed");}});
 $("copyLog").addEventListener("click",()=>{const txt=$("ver").textContent+"\n"+LOG.join("\n");
   const sel=()=>{const r=document.createRange();r.selectNodeContents($("dbg"));const w=getSelection();w.removeAllRanges();w.addRange(r);toast("Selected: use Copy");};
