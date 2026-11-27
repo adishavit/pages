@@ -49,7 +49,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sd.next{border-width:3px}
 .sd.mine{width:14px;height:14px;margin:-7px 0 0 -7px;background:#ffcf33;border-color:#c60}
 .slab{position:absolute;top:44px;width:0;height:0}
-.slab>span{position:absolute;left:0;bottom:0;transform-origin:0 100%;transform:rotate(-40deg);font-size:11px;line-height:12px;white-space:nowrap;color:var(--mut);direction:rtl;unicode-bidi:isolate;padding:0 2px}
+.slab>span{display:block;position:absolute;left:0;bottom:0;transform-origin:0 100%;transform:rotate(-40deg);font-size:11px;line-height:12px;white-space:nowrap;color:var(--mut);direction:rtl;unicode-bidi:isolate;padding:0 2px}
 .slab.r>span{left:auto;right:0;transform-origin:100% 100%;transform:rotate(40deg)}
 .slab.next>span{color:var(--fg);font-weight:600}
 .slab.past>span{opacity:.45}
@@ -269,7 +269,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v118";
+const VERSION="v119";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -605,7 +605,7 @@ let stopMarks=[], LAB_SHOWN=null, labSig="";
 function declutterMap(){ if(!HAVE_MAP||!LAB_SHOWN) return;
   for(const {i,m} of stopMarks){ const t=m.getTooltip&&m.getTooltip(), el=t&&t.getElement&&t.getElement(); if(!el) continue;
     el.style.visibility=LAB_SHOWN.has(i)||i===0||i===stops.length-1?"":"hidden"; } }
-function setLabShown(set){ LAB_SHOWN=set; const sig=[...set].sort((a,b)=>a-b).join(","); if(sig!==labSig){ labSig=sig; declutterMap(); } }
+function setLabShown(set){ LAB_SHOWN=set; const sig=[...set.keys()].sort((a,b)=>a-b).join(","); if(sig!==labSig){ labSig=sig; declutterMap(); } }
 async function loadRoad(){
   if(stops.length<2) return;
   // cached by line + station codes (stable), so the timetable's slightly different coordinates don't cause a re-fetch
@@ -1600,7 +1600,7 @@ function labPri(i,nextI,firsts,useLens){ const s=stops[i];
   if(s.code===MY_STOP||s.code===TO_STOP) return 0;
   if(useLens&&lensK>0&&!lensFar(i)) return 1;
   if(i===nextI) return 2; if(i===0||i===stops.length-1) return 3; return firsts[i]?4:5; }
-const LAB_ANG=40*Math.PI/180, LAB_H=12; let labCtx=null; const labWc=new Map();
+const LAB_ANG=40*Math.PI/180, LAB_H=9; let labCtx=null; const labWc=new Map();   // LAB_H: collision height a bit under the 12 px line box (touching ascenders are fine)
 function labWidth(text,bold){ const k=(bold?"b":"n")+text; let w=labWc.get(k);
   if(w==null){ if(labCtx===null){ try{ labCtx=document.createElement("canvas").getContext("2d")||false; }catch(_){ labCtx=false; } }
     if(labCtx){ labCtx.font=`${bold?700:400} 11px ${getComputedStyle(document.body).fontFamily}`; w=labCtx.measureText(text).width+4; }
@@ -1619,10 +1619,13 @@ function quadsOverlap(a,b){   // separating-axis test for two convex quads
     for(const v of b){ const d=(v[0]*nx+v[1]*ny)/L; b0=Math.min(b0,d); b1=Math.max(b1,d); }
     if(a1<=b0+1||b1<=a0+1) return false; }
   return true; }
-// cands: [{i,pri,quad}] -> Set of station indices whose label is shown
-function placeLabels(cands){ const placed=[], out=new Set();
+// cands: [{i,pri,w,qf:w=>quad}] -> Map station index -> shown width (px; full width or shortened with "…").
+// A label that collides is first tried shorter (70%, 50%, 35%, at least ~3 letters) before it is left out.
+function placeLabels(cands){ const placed=[], out=new Map();
   for(const c of [...cands].sort((x,y)=>x.pri-y.pri||x.i-y.i)){
-    if(c.pri>0&&placed.some(q=>quadsOverlap(q,c.quad))) continue; placed.push(c.quad); out.add(c.i); }
+    if(c.pri===0){ const q=c.qf(c.w); placed.push(q); out.set(c.i,c.w); continue; }
+    for(const f of [1,.7,.5,.35]){ const w=c.w*f; if(f<1&&w<24) break; const q=c.qf(w);
+      if(!placed.some(p=>quadsOverlap(p,q))){ placed.push(q); out.set(c.i,f<1?Math.floor(w):c.w); break; } } }
   return out; }
 const shortName=n=>String(n).split("/")[0].replace(/^ת\. ?רכבת /,"").replace(/^ת\.רק''ל /,"").replace(/^ת\. מרכזית /,"").trim();
 function busNowAlong(b){ const age=Math.max(0,(Date.now()-goT(b))/1000);
@@ -1705,7 +1708,8 @@ function renderStrip(model){
   const shownL=(()=>{ const W=$("stripIn").clientWidth||360, firsts=runFirsts();
     return placeLabels(stops.map((s,i)=>{ const mine=s.code===MY_STOP, x=SX(i)*W/100;
       const txt=shortName(s.name)+(mine&&(myEta||myDash)?" · 00′":"");
-      return {i,pri:labPri(i,nextIdx[0],firsts,true),quad:labQuad(x,44,labWidth(txt,mine||s.code===TO_STOP||nextIdx.includes(i)),SX(i)>50,false)}; })); })();
+      const w=labWidth(txt,mine||s.code===TO_STOP||nextIdx.includes(i));
+      return {i,pri:labPri(i,nextIdx[0],firsts,true),w,qf:ww=>labQuad(x,44,ww,SX(i)>50,false)}; })); })();
   setLabShown(shownL);
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
@@ -1713,7 +1717,7 @@ function renderStrip(model){
     const rw=LO(loop?stripRow[i]:0);
     h+=`<b class="sd${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${waitTxt(myEta,true)}`:mine&&myDash?" · --":"");
-    if(shownL.has(i)) h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}${lensFar(i)?" far":""}" style="left:${SX(i)}%${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span>${lab}</span></span>`;
+    if(shownL.has(i)) h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}${lensFar(i)?" far":""}" style="left:${SX(i)}%${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span${shownL.get(i)<labWidth(shortName(s.name)+(mine&&(myEta||myDash)?" · 00′":""),mine||dest||nx)-1?` style="max-width:${shownL.get(i)}px;overflow:hidden;text-overflow:ellipsis"`:""}>${lab}</span></span>`;
   });
   // destination
   if(!loop) h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
@@ -1778,14 +1782,15 @@ function renderLoopStrip(model){
   const shownL=(()=>{ const firsts=runFirsts();
     return placeLabels(stops.map((s,i)=>{ const mine=s.code===MY_STOP, q=loopAt(stripU[i]);
       const txt=shortName(s.name)+(mine&&(myEta||myDash)?" · 00′":"");
-      return {i,pri:labPri(i,nextIdx[0],firsts,true),quad:labQuad(q.x,q.lo?q.y+8:q.y-8,labWidth(txt,mine||s.code===TO_STOP||nextIdx.includes(i)),q.x/G.W*100>50,q.lo)}; })); })();
+      const w=labWidth(txt,mine||s.code===TO_STOP||nextIdx.includes(i));
+      return {i,pri:labPri(i,nextIdx[0],firsts,true),w,qf:ww=>labQuad(q.x,q.lo?q.y+8:q.y-8,ww,q.x/G.W*100>50,q.lo)}; })); })();
   setLabShown(shownL);
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i), dest=s.code===TO_STOP;
     const q=loopAt(stripU[i]), x=pc(q.x), cl=`${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}`;
     h+=`<b class="sd${cl}" data-code="${esc(s.code)}" style="left:${x}%;top:${q.y}px" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${waitTxt(myEta,true)}`:mine&&myDash?" · --":"");
-    if(shownL.has(i)) h+=`<span class="slab${x>50?" r":""}${cl}${q.lo?" lo":""}${lensFar(i)?" far":""}" style="left:${x}%;top:${q.lo?q.y+8:q.y-8}px${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span>${lab}</span></span>`;
+    if(shownL.has(i)) h+=`<span class="slab${x>50?" r":""}${cl}${q.lo?" lo":""}${lensFar(i)?" far":""}" style="left:${x}%;top:${q.lo?q.y+8:q.y-8}px${lensFar(i)?`;opacity:${(1-.82*lensK).toFixed(2)}`:""}"><span${shownL.get(i)<labWidth(shortName(s.name)+(mine&&(myEta||myDash)?" · 00′":""),mine||dest||nx)-1?` style="max-width:${shownL.get(i)}px;overflow:hidden;text-overflow:ellipsis"`:""}>${lab}</span></span>`;
   });
   for(const b of model){
     const cls=(b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":""), f=loopAt(stripUraw(b.along)), n=loopAt(stripUraw(busNowAlong(b)));
