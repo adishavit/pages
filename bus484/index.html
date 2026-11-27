@@ -282,7 +282,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v148"; window.__appStarted=true;
+const VERSION="v149"; window.__appStarted=true;
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1513,6 +1513,13 @@ function renderLineOpts(){
   renderTitle();
 }
 let lastModel=[];
+// Per-redraw memo: one render calls these 3-4 times (board, hero, strip, focus bus). Same inputs within the same
+// second give the same result, so all parts of the screen show one consistent picture and the work is done once.
+let modelSeq=0; const modelIds=new WeakMap(), mid=m=>{ if(!m||typeof m!=="object") return 0; let v=modelIds.get(m); if(!v){ v=++modelSeq; modelIds.set(m,v); } return v; };
+function memoSec(fn,keyFn,sec=1){ let k=null,v; return function(...a){ const key=keyFn(...a)+"|"+Math.floor(Date.now()/(sec*1000)); if(key!==k){ k=key; v=fn.apply(this,a); } return v; }; }
+myStopPredictions=memoSec(myStopPredictions,m=>[mid(m),MY_STOP,TO_STOP,SEL_BUS,rides.length,prof?prof.obs:0].join(","));
+passedMyStop=memoSec(passedMyStop,()=>[MY_STOP,newestMs,vehicles.size,stops.length].join(","));
+methodRank=memoSec(methodRank,()=>"",5);
 function render(){
   const model=buildModel(); lastModel=model;
   renderMap(model); renderDiagram(model); renderBoard(model); renderHero(model); renderTitle(); renderTraffic(); renderAccuracy(); renderStrip(model); renderFresh(); renderBusCard(model);
