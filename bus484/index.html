@@ -76,6 +76,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 .strk{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 .strk polyline{fill:none;stroke-width:5}.strk .slow{stroke-width:6}.strk .jam{stroke-width:8}
 .strk .past{stroke:var(--old);opacity:.35;stroke-width:3}
+.strk .snEnd{stroke:var(--acc);stroke-width:3;stroke-linecap:round;opacity:.8}
+.sbus.up{background:var(--bg,#fff)!important;color:var(--str);box-shadow:none;border:1.5px dashed var(--str);line-height:11px;cursor:default;opacity:.85}
+.sbus.up::after,.sbus.up::before{background:var(--str);opacity:.5;margin-left:0!important}
+.sbus.up::after{left:6px!important}.sbus.up::before{left:2px!important}
+.sbus.up.upL{transform:translateX(-7px)}.sbus.up.upR{transform:translateX(calc(-100% + 7px))}
+.sbus.up.upR::after{left:auto!important;right:6px}.sbus.up.upR::before{left:auto!important;right:2px}   /* anchored at the first station, kept on screen */
 .strk .close{fill:none;stroke:var(--old);stroke-width:2;stroke-dasharray:3 3;opacity:.45}
 .slab.lo>span{bottom:auto;top:0;transform-origin:0 0;transform:rotate(40deg)}
 .slab.lo.r>span{left:auto;right:0;transform-origin:100% 0;transform:rotate(-40deg)}
@@ -258,7 +264,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v93";
+const VERSION="v94";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1387,18 +1393,22 @@ function render(){
 // Loop lines (start and end < 300 m apart) are drawn as a racetrack: outbound on the top bar up to the turnaround (the
 // station farthest from the start), back on the bottom bar; the turnaround leg is the rounded end.
 let stripX0=null, stripFlip=false, stripU=null, stripRow=null, LOOPK=-1, stripLo=3, stripHi=97;
-const LOOP_M=8, LOOP_MIN_STOPS=20;   // short loops read fine as a straight strip
+const LOOP_M=8, LOOP_MIN_STOPS=20, SNAKE_MIN_STOPS=30;   // short lines read fine as a straight strip
+let SNAKE=false;   // long one-way line folded in two (same track as the racetrack, but open at the end)
 function stripLayout(){
   if(stops.length<2){stripX0=null;return;}
-  LOOPK=-1;
+  LOOPK=-1; SNAKE=false;
   if(title.loop&&stops.length>=LOOP_MIN_STOPS){ let k=-1,bd=0; stops.forEach((st,i)=>{const d=dist(stops[0].lat,stops[0].lon,st.lat,st.lon); if(d>bd){bd=d;k=i;}});
     if(k>=2&&k<=stops.length-3) LOOPK=k; }
-  stripFlip=LOOPK>=0?stops[LOOPK].lon<stops[0].lon:stops[stops.length-1].lon<stops[0].lon;   // like the map: west on the left
   const w=[];
   for(let i=0;i<stops.length-1;i++){
     const dt=stops[i+1].off-stops[i].off, da=stops[i+1].along-stops[i].along;
     w.push(Number.isFinite(dt)&&dt>0?Math.sqrt(Math.max(30,dt)):0.6+Math.log1p(Math.max(0,da)/300));
   }
+  // long one-way lines: fold at the middle (by strip spacing) into a snake, so each station gets twice the width
+  if(LOOPK<0&&!title.loop&&stops.length>=SNAKE_MIN_STOPS){ const tot=w.reduce((a,b)=>a+b,0); let u=0,k=0;
+    while(k<w.length-1&&u+w[k]<=tot/2){u+=w[k];k++;} LOOPK=Math.max(2,Math.min(stops.length-3,k)); SNAKE=true; }
+  stripFlip=LOOPK>=0?stops[LOOPK].lon<stops[0].lon:stops[stops.length-1].lon<stops[0].lon;   // like the map: west on the left
   if($("strip").classList.contains("loop")!==(LOOPK>=0)){ $("strip").classList.toggle("loop",LOOPK>=0); requestAnimationFrame(()=>setSheet(sheetIdx)); }   // strip height changed: re-fit the panel
   if(LOOPK>=0){ let u=0; stripU=[0]; for(const v of w){u+=v; stripU.push(u);}
     stripX0=stops.map((_,i)=>foldU(stripU[i]).x); stripRow=stops.map((_,i)=>i<=LOOPK?0:1);
@@ -1567,7 +1577,15 @@ function renderStrip(model){
     h+=`<i class="sfix ${cls}${LO(pf.row)}" style="left:${pf.x}%"></i>`;
     h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}${LO(pn.row)}" id="sb-${esc(b.ref)}" style="left:${pn.x}%">${busTagHtml(b,false)}</span>`;
   }
+  for(const t of upcomingTrips(model))  h+=`<span class="sbus up ${SX(0)<50?"upL":"upR"}" style="left:${SX(0)}%" title="scheduled, not on the road yet">${hm(t)}<small>dep</small></span>`;
   el.innerHTML=h; stackTags();
+}
+// the next scheduled departures that no bus on the road matches yet (Stride lists a trip only ~5 min before it leaves):
+// up to 2 within the next hour, as hollow tags at the first station
+function upcomingTrips(model){
+  const now=Date.now(), have=model.map(b=>b.start).filter(x=>x!=null);
+  return rides.map(r=>Date.parse(r.start_time)).filter(t=>Number.isFinite(t)&&t>now-60000&&t<=now+3600000&&!have.some(h=>Math.abs(h-t)<90000))
+    .sort((a,b)=>a-b).slice(0,2);
 }
 function renderLoopStrip(model){
   const el=$("stripIn"), G=LG, pc=v=>v/G.W*100, now=Date.now();
@@ -1578,7 +1596,8 @@ function renderLoopStrip(model){
   const poly=(a0,a1)=>{ const P0=PL(a0),P1=PL(a1),n=Math.max(1,Math.ceil(Math.abs(P1-P0)/5)), pts=[];
     for(let j=0;j<=n;j++){const q=loopXY(P0+(P1-P0)*j/n); pts.push(q.x.toFixed(1)+","+q.y.toFixed(1));} return pts.join(" "); };
   const xa=stripFlip?G.W-G.xa:G.xa;
-  let svg=`<path class="close" d="M${xa} ${G.yT+2*G.r} A${G.r} ${G.r} 0 0 ${stripFlip?0:1} ${xa} ${G.yT}"/>`, h="";
+  let svg=SNAKE?"":`<path class="close" d="M${xa} ${G.yT+2*G.r} A${G.r} ${G.r} 0 0 ${stripFlip?0:1} ${xa} ${G.yT}"/>`, h="";
+  if(SNAKE){ const e=loopXY(G.Lline); svg+=`<path class="snEnd" d="M${e.x+(stripFlip?7:-7)} ${e.y-7} v14"/>`; }   // end of the line
   for(let i=0;i<stops.length-1;i++){
     const A=stops[i].along,B=stops[i+1].along; let pieces=[];
     if(prof&&B>A){ let cur=null;
@@ -1616,6 +1635,7 @@ function renderLoopStrip(model){
     h+=`<i class="sfix ${cls}" style="left:${pc(f.x)}%;top:${f.y}px"></i>`;
     h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}${n.lo?" lo":""}" id="sb-${esc(b.ref)}" data-y="${n.y}" style="left:${pc(n.x)}%">${busTagHtml(b,false)}</span>`;
   }
+  { const q=loopAt(0); for(const t of upcomingTrips(model)) h+=`<span class="sbus up ${pc(q.x)<50?"upL":"upR"}" data-y="${q.y}" style="left:${pc(q.x)}%" title="scheduled, not on the road yet">${hm(t)}<small>dep</small></span>`; }
   el.innerHTML=`<svg class="strk" width="${G.W}" height="240" aria-hidden="true">${svg}</svg>`+h; stackTags();
 }
 function tickStrip(){ if(document.hidden||!stripX0) return;
