@@ -86,7 +86,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sbus.up.upL{transform:translateX(-7px)}.sbus.up.upR{transform:translateX(calc(-100% + 7px))}
 .sbus.up.upR::after{left:auto!important;right:6px}.sbus.up.upR::before{left:auto!important;right:2px}   /* anchored at the first station, kept on screen */
 .strk .close{fill:none;stroke:var(--old);stroke-width:2;stroke-dasharray:3 3;opacity:.45}
-.stoplbl .fl{display:none}.near .stoplbl .fl{display:inline}.near .stoplbl .sh{display:none}   /* street only; full stop name when zoomed in */
+
 .slab.lo>span{bottom:auto;top:0;transform-origin:0 0;transform:rotate(40deg)}
 .slab.lo.r>span{left:auto;right:0;transform-origin:100% 0;transform:rotate(-40deg)}
 #strip.loop .sarr{font-size:8px;line-height:10px}
@@ -269,7 +269,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v117";
+const VERSION="v118";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -521,7 +521,7 @@ if(HAVE_MAP){
   map.createPane("stopsPane").style.zIndex=450;   // stations above the route and congestion lines, below bus markers
   stopLayer=L.layerGroup().addTo(map); hotLayer=L.layerGroup().addTo(map); trailLayer=L.layerGroup().addTo(map); estLayer=L.layerGroup().addTo(map); meLayer=L.layerGroup().addTo(map);
   const zc=()=>{ map.getContainer().classList.toggle("far",map.getZoom()<12); map.getContainer().classList.toggle("near",map.getZoom()>=16); }; map.on("zoomend",zc); zc();
-  map.on("zoomend moveend",()=>declutterMap());
+
 }else{ $("map").innerHTML='<p style="padding:5em 1em">Map library failed to load. Lists still update.</p>'; log("Leaflet missing"); }
 function sheetH(){return $("sheet").getBoundingClientRect().height||190;}
 function fitRoute(){ if(!HAVE_MAP) return; const b=routeLine?routeLine.getBounds():(stops.length>1?L.latLngBounds(stops.map(s=>[s.lat,s.lon])):null);
@@ -592,22 +592,20 @@ function drawStops(){
     const mine=s.code===MY_STOP, dest=s.code===TO_STOP, end=i===0||i===stops.length-1;
     // HTML markers (not vector circles): they keep their size while you pinch-zoom
     L.marker([s.lat,s.lon],{pane:"stopsPane",icon:L.divIcon({className:"",iconSize:[0,0],html:`<div class="stn${mine?" mine":dest?" dest":""}"></div>`}),keyboard:false})
-      .bindTooltip(`<span class="sh">${esc(shortName(s.name))}</span><span class="fl">${esc(s.name)}</span>`,{permanent:true,direction:"right",offset:[mine||dest?11:8,0],className:"stoplbl"+(mine?" mine":dest?" dest":end?"":" n"),interactive:true})
+      .bindTooltip(esc(s.name),{permanent:true,direction:"right",offset:[mine||dest?11:8,0],className:"stoplbl"+(mine?" mine":dest?" dest":end?"":" n"),interactive:true})
       .on("click",()=>tapStation(s.code)).addTo(stopLayer);
     stopMarks.push({i,m:stopLayer.getLayers()[stopLayer.getLayers().length-1]});
   });
   if(!fitted&&stops.length){fitRoute();fitted=true;}
   declutterMap();
 }
-// map labels: same priorities as the strip, overlap tested on the labels' actual boxes; redone after every zoom/pan
-let stopMarks=[], declT=0;
-function declutterMap(){ if(!HAVE_MAP||declT) return; declT=requestAnimationFrame(()=>{ declT=0;
-  const firsts=runFirsts(), fb=focusBus(lastModel||[]), na=fb?busNowAlong(fb):null, nextI=na==null?-1:stops.findIndex(s=>s.along>na+30);
-  const items=[];
+// map labels mirror the strip: a name left out on the strip is left out on the map too (one decision, made where
+// space is tightest). Ends of the line always keep their names on the map.
+let stopMarks=[], LAB_SHOWN=null, labSig="";
+function declutterMap(){ if(!HAVE_MAP||!LAB_SHOWN) return;
   for(const {i,m} of stopMarks){ const t=m.getTooltip&&m.getTooltip(), el=t&&t.getElement&&t.getElement(); if(!el) continue;
-    el.style.visibility=""; const r=el.getBoundingClientRect(); if(!r.width) continue;
-    items.push({i,el,pri:labPri(i,nextI,firsts,false),quad:[[r.left,r.top],[r.right,r.top],[r.right,r.bottom],[r.left,r.bottom]]}); }
-  const show=placeLabels(items); for(const it of items) if(!show.has(it.i)) it.el.style.visibility="hidden"; }); }
+    el.style.visibility=LAB_SHOWN.has(i)||i===0||i===stops.length-1?"":"hidden"; } }
+function setLabShown(set){ LAB_SHOWN=set; const sig=[...set].sort((a,b)=>a-b).join(","); if(sig!==labSig){ labSig=sig; declutterMap(); } }
 async function loadRoad(){
   if(stops.length<2) return;
   // cached by line + station codes (stable), so the timetable's slightly different coordinates don't cause a re-fetch
@@ -1708,6 +1706,7 @@ function renderStrip(model){
     return placeLabels(stops.map((s,i)=>{ const mine=s.code===MY_STOP, x=SX(i)*W/100;
       const txt=shortName(s.name)+(mine&&(myEta||myDash)?" · 00′":"");
       return {i,pri:labPri(i,nextIdx[0],firsts,true),quad:labQuad(x,44,labWidth(txt,mine||s.code===TO_STOP||nextIdx.includes(i)),SX(i)>50,false)}; })); })();
+  setLabShown(shownL);
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i);
     const dest=s.code===TO_STOP;
@@ -1780,6 +1779,7 @@ function renderLoopStrip(model){
     return placeLabels(stops.map((s,i)=>{ const mine=s.code===MY_STOP, q=loopAt(stripU[i]);
       const txt=shortName(s.name)+(mine&&(myEta||myDash)?" · 00′":"");
       return {i,pri:labPri(i,nextIdx[0],firsts,true),quad:labQuad(q.x,q.lo?q.y+8:q.y-8,labWidth(txt,mine||s.code===TO_STOP||nextIdx.includes(i)),q.x/G.W*100>50,q.lo)}; })); })();
+  setLabShown(shownL);
   stops.forEach((s,i)=>{
     const mine=s.code===MY_STOP, past=s.along<=passedA+30&&i<stops.length-1, nx=nextIdx.includes(i), dest=s.code===TO_STOP;
     const q=loopAt(stripU[i]), x=pc(q.x), cl=`${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}`;
