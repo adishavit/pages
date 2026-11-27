@@ -78,6 +78,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .strk .past{stroke:var(--old);opacity:.35;stroke-width:3}
 .strk .chev{fill:none;stroke:#fff;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.95}
 .strk .chev.past{stroke:#666;opacity:.8}.strk .chev.nodata{stroke:var(--acc);opacity:1}
+.slab.far{opacity:.18}
 .strk .snEnd{stroke:var(--acc);stroke-width:3;stroke-linecap:round;opacity:.8}
 .sbus.up{background:var(--bg,#fff)!important;color:var(--str);box-shadow:none;border:1.5px dashed var(--str);line-height:11px;cursor:default;opacity:.85}
 .sbus.up::after,.sbus.up::before{background:var(--str);opacity:.5;margin-left:0!important}
@@ -267,7 +268,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v100";
+const VERSION="v101";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1509,25 +1510,35 @@ function foldU(u){
 // and compresses the rest; order is preserved and it relaxes smoothly on release.
 let lensF=50, lensK=0, lensAnim=0;
 function lensX(x){ return lensGen(x,stripLo,stripHi); }
-// Local lens: stations within ~LENS_R px of the finger spread apart, ones farther away stay where they are
-// (displacement d·k·exp(-(d/R)²); monotone for k < 2.24). Its strength k adapts to the local spacing: just enough to
-// bring neighbouring stations ~LENS_TARGET px apart, and none where they already are (wide screens, sparse lines).
-const LENS_R=70, LENS_TARGET=44, LENS_KMAX=2.2;
-let lensGainF=null, lensGainV=0;
+// Local lens. Inside a window (~±150 px around the finger, slid inward at the ends of the line) the spacing is
+// redistributed: a core of ±30 px around the finger is magnified M×, the rest of the window shrinks evenly (never
+// below 45%) to make room; outside the window nothing moves. Piecewise linear, so always in order (no crossings or
+// pile-ups). M adapts to the local spacing: just enough for ~LENS_TARGET px between stations, 1 (no lens) where they
+// already are that far apart (wide screens, sparse lines).
+const LENS_CORE=30, LENS_WIN=150, LENS_TARGET=44, LENS_MMAX=3.5, LENS_QMIN=0.45;
+let lensGainF=null, lensGainV=1;
 function lensUnits(){ const loop=LOOPK>=0&&LG; return {loop, ppu:loop?1:($("stripIn").clientWidth||360)/100}; }
-function lensGain(){
+function lensMag(){   // wanted magnification at the finger
   if(lensGainF===lensF) return lensGainV; lensGainF=lensF;
   const {loop,ppu}=lensUnits(), xs=stops.map((_,i)=>loop?loopP(stripU[i]):stripX0[i]);
   const near=xs.map(x=>[Math.abs(x-lensF),x]).sort((a,b)=>a[0]-b[0]).slice(0,4).map(z=>z[1]).sort((a,b)=>a-b);
   const g=near.length>1?(near[near.length-1]-near[0])/(near.length-1)*ppu:Infinity;
-  lensGainV=Math.max(0,Math.min(LENS_KMAX,LENS_TARGET/Math.max(1,g)-1)); if(lensGainV<0.15) lensGainV=0;
+  lensGainV=Math.max(1,Math.min(LENS_MMAX,LENS_TARGET/Math.max(1,g))); if(lensGainV<1.15) lensGainV=1;
   return lensGainV; }
 function lensGen(x,lo,hi){
-  if(lensK<=0||!stripX0||x<=lo||x>=hi) return x;               // ends pinned
-  const k=lensGain()*lensK; if(k<=0) return x;
-  const {ppu}=lensUnits(), R=LENS_R/ppu, d=x-lensF, u=d/R;
-  const taper=Math.min(1,(x-lo)/R,(hi-x)/R);                    // fade out next to the pinned ends
-  return Math.max(lo,Math.min(hi,x+d*k*Math.exp(-u*u)*taper)); }
+  if(lensK<=0||!stripX0||x<=lo||x>=hi) return x;
+  const M0=lensMag(); if(M0<=1) return x;
+  const {ppu}=lensUnits(), c=LENS_CORE/ppu, w=Math.min(LENS_WIN/ppu,(hi-lo)/2), f=Math.max(lo,Math.min(hi,lensF));
+  let a=f-w, b=f+w; if(a<lo){b+=lo-a;a=lo;} if(b>hi){a-=b-hi;b=hi;} a=Math.max(lo,a);   // slide the window inside the line
+  if(x<=a||x>=b) return x;
+  const c0=Math.max(a,f-c), c1=Math.min(b,f+c), C=c1-c0, rest=(b-a)-C; if(C<=0) return x;
+  let M=1+(M0-1)*lensK, q=rest>0?((b-a)-M*C)/rest:1;
+  if(q<LENS_QMIN){ q=LENS_QMIN; M=((b-a)-q*rest)/C; }
+  const t=x<c0?(x-a)*q:x<c1?(c0-a)*q+(x-c0)*M:(c0-a)*q+C*M+(x-c1)*q;
+  return a+t; }
+// while the lens is on, names away from the finger fade, so the magnified ones read clearly
+function lensFar(i){ if(lensK<=0||lensMag()<=1) return false; const {loop,ppu}=lensUnits(); const x=loop?loopP(stripU[i]):stripX0[i];
+  return Math.abs(x-lensF)*ppu>LENS_CORE*1.6; }
 const SX=i=>LOOPK>=0&&LG?loopAt(stripU[i]).x/LG.W*100:lensX(stripX0[i]);       // station position on screen (%), lens applied
 function stripX(a){ return LOOPK>=0&&stripU?stripPos(a).x:lensX(stripXraw(a)); }
 function stripPos(a){ if(LOOPK<0||!LG) return {x:lensX(stripXraw(a)),row:0};
@@ -1648,7 +1659,7 @@ function renderStrip(model){
     const rw=LO(loop?stripRow[i]:0);
     h+=`<b class="sd${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}" data-code="${esc(s.code)}" style="left:${SX(i)}%" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${waitTxt(myEta,true)}`:mine&&myDash?" · --":"");
-    h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}" style="left:${SX(i)}%"><span>${lab}</span></span>`;
+    h+=`<span class="slab${SX(i)>50?" r":""}${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}${rw}${lensFar(i)?" far":""}" style="left:${SX(i)}%"><span>${lab}</span></span>`;
   });
   // destination
   if(!loop) h+=`<span class="sdest${stripFlip?" l":""}">${stripFlip?"◀ ":""}${esc(title.to||shortName(stops[stops.length-1].name))}${stripFlip?"":" ▶"}</span>`;
@@ -1715,7 +1726,7 @@ function renderLoopStrip(model){
     const q=loopAt(stripU[i]), x=pc(q.x), cl=`${mine?" mine":dest?" dest":""}${past?" past":""}${nx?" next":""}`;
     h+=`<b class="sd${cl}" data-code="${esc(s.code)}" style="left:${x}%;top:${q.y}px" title="${esc(s.name)}" role="button" tabindex="0" aria-label="${mine?"Boarding: ":dest?"Getting off: ":"Station: "}${esc(s.name)}"></b>`;
     const lab=esc(shortName(s.name))+(mine&&myEta?` · ${waitTxt(myEta,true)}`:mine&&myDash?" · --":"");
-    h+=`<span class="slab${x>50?" r":""}${cl}${q.lo?" lo":""}" style="left:${x}%;top:${q.lo?q.y+8:q.y-8}px"><span>${lab}</span></span>`;
+    h+=`<span class="slab${x>50?" r":""}${cl}${q.lo?" lo":""}${lensFar(i)?" far":""}" style="left:${x}%;top:${q.lo?q.y+8:q.y-8}px"><span>${lab}</span></span>`;
   });
   for(const b of model){
     const cls=(b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":""), f=loopAt(stripUraw(b.along)), n=loopAt(stripUraw(busNowAlong(b)));
