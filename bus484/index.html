@@ -76,6 +76,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .strk{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 .strk polyline{fill:none;stroke-width:5}.strk .slow{stroke-width:6}.strk .jam{stroke-width:8}
 .strk .past{stroke:var(--old);opacity:.35;stroke-width:3}
+.strk .chev{fill:none;stroke:#fff;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.95}
 .strk .snEnd{stroke:var(--acc);stroke-width:3;stroke-linecap:round;opacity:.8}
 .sbus.up{background:var(--bg,#fff)!important;color:var(--str);box-shadow:none;border:1.5px dashed var(--str);line-height:11px;cursor:default;opacity:.85}
 .sbus.up::after,.sbus.up::before{background:var(--str);opacity:.5;margin-left:0!important}
@@ -265,7 +266,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v95";
+const VERSION="v96";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1650,6 +1651,7 @@ function renderLoopStrip(model){
     for(let j=0;j<=n;j++){const q=loopXY(P0+(P1-P0)*j/n); pts.push(q.x.toFixed(1)+","+q.y.toFixed(1));} return pts.join(" "); };
   const xa=stripFlip?G.W-G.xa:G.xa;
   let svg=SNAKE?"":`<path class="close" d="M${xa} ${G.yT+2*G.r} A${G.r} ${G.r} 0 0 ${stripFlip?0:1} ${xa} ${G.yT}"/>`, h="";
+  let chev="";
   if(SNAKE){ const e=loopXY(G.Lline); svg+=`<path class="snEnd" d="M${e.x+(stripFlip?7:-7)} ${e.y-7} v14"/>`; }   // end of the line
   for(let i=0;i<stops.length-1;i++){
     const A=stops[i].along,B=stops[i+1].along; let pieces=[];
@@ -1664,9 +1666,10 @@ function renderLoopStrip(model){
         if(q.past){ svg+=`<polyline class="past" points="${pts}"/>`; continue; }
         if(q.lv===2){ svg+=`<polyline class="jam" points="${pts}" style="stroke:#c62828"/><polyline class="jam" points="${pts}" style="stroke:#7f0000;stroke-dasharray:3 4"/>`; continue; }
         svg+=`<polyline class="${q.lv===1?"slow":""}" points="${pts}" style="stroke:${q.lv==null?"var(--acc)":LEVEL_COLOR[q.lv]};${q.lv==null?"opacity:.5":""}"/>`; } }
-    // direction arrows inside the track, on the top straight only (the two sides' arrows would collide)
+    // direction: a small white chevron ON the track in the middle of each segment with room for it (follows the bends)
     const P0=PL(A),P1=PL(B);
-    if(P1<=G.S&&P1-P0>24){ const m=loopXY((P0+P1)/2); h+=`<span class="sarr" aria-hidden="true" style="left:${pc(m.x)}%;top:${G.yT+3}px">${stripFlip?"◀":"▶"}</span>`; }
+    if(P1-P0>22){ const m=(P0+P1)/2, a=loopXY(m-2), c=loopXY(m+2), q=loopXY(m), ang=Math.atan2(c.y-a.y,c.x-a.x)*180/Math.PI;
+      chev+=`<path class="chev" d="M-1.8 -2.4 L1.4 0 L-1.8 2.4" transform="translate(${q.x.toFixed(1)} ${q.y.toFixed(1)}) rotate(${ang.toFixed(0)})"/>`; }
   }
   // remaining travel time of the followed bus to my getting-off stop, inside the track between the bus and the stop
   { const t=toStop();
@@ -1689,7 +1692,7 @@ function renderLoopStrip(model){
     h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}${n.lo?" lo":""}" id="sb-${esc(b.ref)}" data-y="${n.y}" style="left:${pc(n.x)}%">${busTagHtml(b,false)}</span>`;
   }
   { const q=loopAt(0); for(const t of upcomingTrips(model)) h+=`<span class="sbus up ${pc(q.x)<50?"upL":"upR"}" data-y="${q.y}" style="left:${pc(q.x)}%" title="scheduled, not on the road yet">${hm(t)}<small>dep</small></span>`; }
-  el.innerHTML=`<svg class="strk" width="${G.W}" height="240" aria-hidden="true">${svg}</svg>`+h; stackTags();
+  el.innerHTML=`<svg class="strk" width="${G.W}" height="240" aria-hidden="true">${svg}${chev}</svg>`+h; stackTags();
 }
 function tickStrip(){ if(document.hidden||!stripX0) return;
   for(const b of lastModel){const e=document.getElementById("sb-"+b.ref); if(e){ const q=stripPos(busNowAlong(b)); e.style.left=q.x+"%"; e.classList.toggle("lo",q.row===1); if(q.y!=null) e.dataset.y=q.y; }}
