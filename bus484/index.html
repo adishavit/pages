@@ -61,7 +61,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sfix{position:absolute;top:52px;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--str);z-index:3}
 .sfix.live{background:var(--live)}.sfix.old{background:var(--old)}
 .sbus{position:absolute;top:76px;transform:translateX(-50%);background:var(--str);color:#fff;border-radius:8px;padding:0 5px;font:700 11px/14px system-ui,sans-serif;white-space:nowrap;z-index:4;transition:left 1s linear;box-shadow:0 1px 3px rgba(0,0,0,.4)}
-.sbus small{font-weight:400;margin-left:3px}
+.sbus small{font-weight:400;margin-left:3px;font-size:9px;opacity:.85}
 .sbus.r2{top:92px}   /* second row when tags would overlap */
 /* pointer from each tag up to the bus's exact position on the line (line centre ~53px) */
 .sbus::after{content:"";position:absolute;left:50%;margin-left:-1px;width:2px;top:-21px;height:21px;background:inherit;opacity:.9}
@@ -151,7 +151,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 #dbg{font:11px/1.35 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;background:var(--card);padding:6px;border-radius:8px;max-height:50vh;overflow:auto}
 /* map markers */
 .bm{position:absolute;transform:translate(-50%,-50%);background:var(--str);color:#fff;border:2px solid #fff;border-radius:12px;padding:1px 6px 2px;font:700 13px/15px system-ui,sans-serif;text-align:center;box-shadow:0 1px 5px rgba(0,0,0,.5);white-space:nowrap}
-.bm small{display:block;font-size:11px;font-weight:500;line-height:12px}
+.bm small{display:block;font-size:10px;font-weight:400;line-height:11px;opacity:.85}
 .bm.live{background:var(--live)}.bm.old{background:var(--old)}
 .bm.est{background:#fff;color:var(--str);border:2px dashed var(--str)}
 .bm .arr{position:absolute;left:50%;top:50%;width:0;height:0;margin:-30px 0 0 -7px;border:7px solid transparent;border-bottom:11px solid #111;transform-origin:7px 30px;opacity:.85}
@@ -258,7 +258,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v91";
+const VERSION="v92";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -637,7 +637,7 @@ let newestMs=null, strideNewestMs=null;
 let liveState="untried", liveRetryAt=0, liveTurn=0, liveFails=0;
 let refreshErr="", inFlight=false, timer=null, lastRun=0, nextAt=0, okCount=0, failCount=0;
 
-function q(from,to,ref=REF){return `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${ref}&recorded_at_time_from=${encodeURIComponent(new Date(from).toISOString())}&recorded_at_time_to=${encodeURIComponent(new Date(to).toISOString())}&limit=${LIMIT}`;}
+function q(from,to,ref=REF){return `${API}/siri_vehicle_locations/list?siri_routes__line_ref=${ref}&recorded_at_time_from=${encodeURIComponent(new Date(from).toISOString())}&recorded_at_time_to=${encodeURIComponent(new Date(to).toISOString())}&order_by=recorded_at_time%20desc&limit=${LIMIT}`;}
 // Stride filters by one route id: a line made of several routes (TWINS) needs one query each
 async function strideGet(label,from,to){ const refs=lineRefs(); if(refs.length===1) return getJSON(label,q(from,to));
   const r=await Promise.allSettled(refs.map((x,i)=>getJSON(label+(i?"/"+x:""),q(from,to,x))));
@@ -1076,6 +1076,17 @@ function delayHtml(b){
   return d>0?`<span class="d-late">+${d} min late</span>`:`<span class="d-early">${-d} min early</span>`;
 }
 const depLabel=b=>b.start!=null?hm(b.start):"";
+// bus tag text (the line number is the whole screen, so it's left out): big = minutes to the bus's next station
+// (our estimate); small = its departure time. Before it leaves the first station: big = departure time, small "dep".
+function busTag(b){
+  const now=Date.now(), a=busNowAlong(b);
+  if(b.start!=null&&now<b.start&&a<300) return {big:hm(b.start),small:"dep"};
+  const s=stops.find(x=>x.along>a+30), dep=depLabel(b);
+  if(!s||b.stale) return {big:dep||"?",small:b.stale?"old":""};
+  const t=selAt(b,s), m=t&&t!=="passed"?Math.round((t.t-now)/60000):null;
+  return {big:m==null?(dep||"?"):m<1?"<1′":m+"′",small:m==null?"":dep};
+}
+const busTagHtml=(b,est)=>{ const g=busTag(b); return `${esc(g.big)}<small>${est?"est.":esc(g.small)}</small>`; };
 const busName=b=>`${esc(title.num)}${b.start!=null?` <span class="mut" style="font-weight:400">· ${hm(b.start)} dep.</span>`:""}`;
 function stopAtAlong(a){let s=stops[0];for(const x of stops) if(x.along<=a+30) s=x; return s;}
 function nextStopAfter(a){return stops.find(x=>x.along>a+30)||null;}
@@ -1106,7 +1117,7 @@ function myStopPredictions(model){
 function goneBus(b){ if(b.ref===SEL_BUS) return false; const t=toStop(), f=myStop(), lim=t||f; return !!lim&&b.along>lim.along+30; }
 function busIcon(b,est){
   const cls=(est?"est":b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":"");
-  return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${cls}${SEL_BUS===b.ref?" sel":""}">${esc(title.num)}<small>${est?"est.":depLabel(b)}</small></div>`});
+  return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${cls}${SEL_BUS===b.ref?" sel":""}">${busTagHtml(b,est)}</div>`});
 }
 function animate(entry,to,D=1200){
   const from=entry.m.getLatLng(); if(from.lat===to[0]&&from.lng===to[1]) return;
@@ -1190,7 +1201,7 @@ function renderDiagram(model,preds){
     const A=stops[i],B=stops[Math.min(i+1,stops.length-1)];
     const f=B.along>A.along?Math.max(0,Math.min(1,(b.along-A.along)/(B.along-A.along))):0;
     const top=ROW*(i+.5)+f*ROW*(B===A?0:1);
-    h+=`<div class="dbus" style="top:${top}px"><div class="bm ${b.stale?"old":b.live?"live":""}" style="position:static;transform:none">${esc(title.num)}<small>${depLabel(b)}</small></div></div>`;
+    h+=`<div class="dbus" style="top:${top}px"><div class="bm ${b.stale?"old":b.live?"live":""}" style="position:static;transform:none">${busTagHtml(b,false)}</div></div>`;
   }
   el.innerHTML=h;
 }
@@ -1554,7 +1565,7 @@ function renderStrip(model){
     const cls=(b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":"");
     const pf=stripPos(b.along), pn=stripPos(busNowAlong(b));
     h+=`<i class="sfix ${cls}${LO(pf.row)}" style="left:${pf.x}%"></i>`;
-    h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}${LO(pn.row)}" id="sb-${esc(b.ref)}" style="left:${pn.x}%">${esc(title.num)}${b.start!=null?`<small>${hm(b.start)}</small>`:""}</span>`;
+    h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}${LO(pn.row)}" id="sb-${esc(b.ref)}" style="left:${pn.x}%">${busTagHtml(b,false)}</span>`;
   }
   el.innerHTML=h; stackTags();
 }
@@ -1603,7 +1614,7 @@ function renderLoopStrip(model){
   for(const b of model){
     const cls=(b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":""), f=loopAt(stripUraw(b.along)), n=loopAt(stripUraw(busNowAlong(b)));
     h+=`<i class="sfix ${cls}" style="left:${pc(f.x)}%;top:${f.y}px"></i>`;
-    h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}${n.lo?" lo":""}" id="sb-${esc(b.ref)}" data-y="${n.y}" style="left:${pc(n.x)}%">${esc(title.num)}${b.start!=null?`<small>${hm(b.start)}</small>`:""}</span>`;
+    h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}${n.lo?" lo":""}" id="sb-${esc(b.ref)}" data-y="${n.y}" style="left:${pc(n.x)}%">${busTagHtml(b,false)}</span>`;
   }
   el.innerHTML=`<svg class="strk" width="${G.W}" height="240" aria-hidden="true">${svg}</svg>`+h; stackTags();
 }
