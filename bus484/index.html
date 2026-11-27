@@ -269,7 +269,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v125";
+const VERSION="v126";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -463,7 +463,9 @@ function prettyRoute(r){ const n=parseRouteName(r);
   const loop=String(r.route_direction)==="3"&&!!n.fromCity&&n.fromCity===n.toCity;
   if(n.fromCity&&n.fromCity!==n.toCity) return {from:n.fromCity,to:n.toCity,loop};
   return {from:shortName(n.fromStop)||n.fromCity,to:shortName(n.toStop)||n.toCity,city:n.fromCity,loop}; }
-function switchTo(ref,line){ const p=new URLSearchParams();p.set("line",line||LINE);p.set("ref",ref);location.search=p.toString(); }
+function switchTo(ref,line){   // keep the map where it is across the reload; the new line then glides into view
+  try{ if(HAVE_MAP){ const c=map.getCenter(); sessionStorage.setItem("mapView",JSON.stringify({lat:c.lat,lng:c.lng,z:map.getZoom()})); } }catch(_){}
+  const p=new URLSearchParams();p.set("line",line||LINE);p.set("ref",ref);location.search=p.toString(); }
 
 // ---------- map styles ----------
 const CARTO_KEY="cb1_5ffa_1_c34b73c1f350ef400374bf6f";   // CARTO basemaps key (free, non-commercial; public by nature: it is in every tile URL)
@@ -526,7 +528,10 @@ if(HAVE_MAP){
     for(const id in this._layers){ const l=this._layers[id]; if(l._path&&l.options.weight) l._path.style.strokeWidth=sc===1?"":(l.options.weight/sc)+"px"; } },
     _update(){ L.SVG.prototype._update.call(this);   // redrawn at the new zoom: back to the normal width
       for(const id in this._layers){ const l=this._layers[id]; if(l._path) l._path.style.strokeWidth=""; } } });
-  map=L.map("map",{zoomControl:false,attributionControl:false,zoomSnap:.25,zoomDelta:.5,wheelPxPerZoomLevel:90,renderer:new KeepWidthSVG({padding:1})}).setView([32.0,34.9],9);
+  map=L.map("map",{zoomControl:false,attributionControl:false,zoomSnap:.25,zoomDelta:.5,wheelPxPerZoomLevel:90,renderer:new KeepWidthSVG({padding:1})});
+  let MAP_CARRY=null; try{ MAP_CARRY=JSON.parse(sessionStorage.getItem("mapView")||"null"); sessionStorage.removeItem("mapView"); }catch(_){}
+  map.setView(MAP_CARRY?[MAP_CARRY.lat,MAP_CARRY.lng]:[32.0,34.9],MAP_CARRY?MAP_CARRY.z:9);
+  window.MAP_CARRY=MAP_CARRY;
   // Leaflet rounds marker positions to whole pixels; slow movement then looks like x,y,x,y stair steps.
   // SmoothMarker keeps sub-pixel positions (browsers render fractional transforms smoothly).
   window.SmoothMarker=L.Marker.extend({update(){ if(this._icon&&this._map){ const p=this._map.project(this._latlng)._subtract(this._map.getPixelOrigin());   // unrounded (latLngToLayerPoint rounds)
@@ -541,7 +546,10 @@ if(HAVE_MAP){
 }else{ $("map").innerHTML='<p style="padding:5em 1em">Map library failed to load. Lists still update.</p>'; log("Leaflet missing"); }
 function sheetH(){return $("sheet").getBoundingClientRect().height||190;}
 function fitRoute(){ if(!HAVE_MAP) return; const b=routeLine?routeLine.getBounds():(stops.length>1?L.latLngBounds(stops.map(s=>[s.lat,s.lon])):null);
-  if(b) map.fitBounds(b,{paddingTopLeft:[20,70],paddingBottomRight:[20,sheetH()+10]}); }
+  if(!b) return; const o={paddingTopLeft:[20,70],paddingBottomRight:[20,sheetH()+10]};
+  // glide (eased zoom-out-and-in) when coming from another view, e.g. after switching direction; jump only on a cold start
+  if(window.MAP_CARRY||fitRoute.done) map.flyToBounds(b,{...o,duration:.9,easeLinearity:.25}); else map.fitBounds(b,o);
+  fitRoute.done=true; }
 
 // route geometry (road shape from OSRM, else straight lines)
 let road=null, roadFailed=false, routePts=[], routeCum=[0];
