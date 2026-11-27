@@ -1,0 +1,44 @@
+# Check, then publish. The site goes live only if the bus484 check passes.
+# Requires: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+# The build is the same default Jekyll build Pages ran from the branch (no _config.yml).
+name: check and deploy pages
+on:
+  push:
+    branches: [main]
+  pull_request:          # check only, no deploy
+  workflow_dispatch:     # manual re-deploy
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: cd tests/bus484 && npm install --no-audit --no-fund
+      - run: tests/bus484/check.sh
+  build:
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/jekyll-build-pages@v1
+        with: { source: ./, destination: ./_site }
+      - uses: actions/upload-pages-artifact@v3
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
