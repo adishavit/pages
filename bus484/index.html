@@ -266,7 +266,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v96";
+const VERSION="v97";
 const BUILD="2026-11-26T18:08:49Z";
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
@@ -1471,6 +1471,12 @@ function alignFacing(){
     if(f>anc[anc.length-1][1]+0.01&&f<0.99) anc.push([j,f]); }   // keep the order (a twin out of order is skipped)
   anc.push([n-1,1]); if(anc.length<=2) return;
   const f0=stops.map((_,j)=>(stripU[j]-uK1)/(uN-uK1));
+  // don't crush the stations between two anchors (e.g. a tail with no facing stops, as at the end of 62): drop the
+  // anchor that squeezes a stretch below 65% of its normal spacing, until none does
+  for(let changed=true;changed&&anc.length>2;){ changed=false;
+    for(let a=0;a<anc.length-1;a++){ const [j0,g0]=anc[a],[j1,g1]=anc[a+1], nat=f0[j1]-f0[j0];
+      if(nat>0&&(g1-g0)/nat<0.65){ anc.splice(a+1<anc.length-1?a+1:a,1); changed=true; break; } } }
+  if(anc.length<=2) return;
   for(let a=0;a<anc.length-1;a++){ const [j0,g0]=anc[a],[j1,g1]=anc[a+1];
     for(let j=j0;j<=j1;j++){ const t=(f0[j]-f0[j0])/((f0[j1]-f0[j0])||1); stripU[j]=uK1+(g0+t*(g1-g0))*(uN-uK1); } }
 }
