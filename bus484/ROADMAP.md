@@ -135,3 +135,14 @@ Open, only if measured slow on a phone:
 - Parallel fetches on load (twins, stop zones per city, tomorrow, fallback days); cache the day's timetable.
 Decided: stay buildless, single file. If modules are ever wanted, bundle back into one versioned file (esbuild) so
 the ?v= update check keeps working.
+
+## Prediction fixes (v158, 2026-11-28)
+Two independent agent reviews found the "3-8 min late bias" was mostly a replay artifact: the feed stops reporting
+0.2-2.1 km before the last stop on 484 (480 too; 19 reaches the terminus), and the replay booked that unseen tail as
+lateness. Corrected replay (/tmp/delay/diag3.js: score where the bus was last seen, no window-cut trips), 4 weekdays
+23-26 Nov, 32 trips/line, MAE min at 10/20/30 ahead, as built -> v158:
+  484 1.6/1.7/3.0 -> 1.5/1.6/1.9   480 2.1/2.3/2.9 -> 1.5/1.9/2.5   19 3.6/5.8/6.0 -> 1.7/2.5/3.7
+v158: DWELL_MEASURED=0 (no stop allowance where the pace is measured: stops are already in it), parked/laid-over probe
+vehicles dropped (>180 s within 30 m), countdown uses the congestion model first (operator ETA as fallback, shown as
+"MoT ~hh:mm" when it differs), a silent bus counts as finished once it should have reached the end (feed stops early).
+Open: 480 still ~+1.1 min late (express vs local probes?); true arrivals in the unseen last km; nightly replay job.

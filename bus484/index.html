@@ -289,7 +289,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v157"; window.__appStarted=true;
+const VERSION="v158"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -918,6 +918,12 @@ let prof=null;         // {C, n, pace[], conf[], plan[], tRef, obs, veh}
 const SEC_CITY=1500, SEC_HWY=4000, PROBE_MS=300000;   // fetch boxes; every 5 min
 // tuned on synthetic jams with realistic bus density; smoothing width adapts: ~25 s of planned travel (150 m city .. 600 m highway)
 const DWELL=20;   // expected seconds stopped at each intermediate station (incl. stops with no one waiting)
+// Where a cell's pace is measured, stopping is already in the measured pace (probe pairs include braking, the stop and
+// pulling away), so only this share of DWELL is added there. Replay of 23-26 Nov 2026 (484, 480, 19): 0 was best.
+const DWELL_MEASURED=0;
+// A probe vehicle that stays within PARK_M for more than PARK_S is laid over or parked, not in traffic: its fixes in
+// that run are dropped (on 484 the evening terminus layovers made the last km look jammed).
+const PARK_M=30, PARK_S=180;
 const ASM={C:100, sigmaSec:25, sigmaMin:150, sigmaMax:600, tau:300, cFree:60/3.6, cCong:-15/3.6, prior:75, minConf:0.35, iter:2};
 function routeBearing(a){const p=pointAt(a),q=pointAt(Math.min(routeLen(),a+40));return brgOf({lat:p[0],lon:p[1]},{lat:q[0],lon:q[1]});}
 const angDiff=(a,b)=>{const d=Math.abs(a-b)%360;return d>180?360-d:d;};
@@ -972,8 +978,12 @@ function probePairs(rows){
     const v=String(r.siri_ride__vehicle_ref??r.siri_ride__id??"");if(!v)continue;const key=v+"|"+t;if(seen.has(key))continue;seen.add(key);
     if(!byV.has(v))byV.set(v,[]);byV.get(v).push({t,lat:r.lat,lon:r.lon,brg:r.bearing,ds:r.distance_from_siri_ride_stop_meters});}
   const out=[]; let veh=0, dwellPairs=0;
-  for(const[,arr]of byV){
+  for(let[,arr]of byV){
     arr.sort((x,y)=>x.t-y.t); let used=false;
+    { const bad=new Array(arr.length).fill(false);           // laid over / parked: drop the whole standing run
+      for(let i=0;i<arr.length;i++){ let j=i; while(j+1<arr.length&&dist(arr[i].lat,arr[i].lon,arr[j+1].lat,arr[j+1].lon)<PARK_M) j++;
+        if(arr[j].t-arr[i].t>PARK_S*1000) for(let k=i;k<=j;k++) bad[k]=true; }
+      if(bad.includes(true)) arr=arr.filter((_,i)=>!bad[i]); }
     // heading from its own movement (else reported bearing); a fix with no pass of our road in that direction is dropped
     for(let k=0;k<arr.length;k++){ const p=arr[k], nx=arr[k+1], pv=arr[k-1];
       const brg=nx&&dist(p.lat,p.lon,nx.lat,nx.lon)>15?brgOf(p,nx):pv&&dist(pv.lat,pv.lon,p.lat,p.lon)>15?brgOf(pv,p):(Number.isFinite(p.brg)&&p.brg>0?p.brg:null);
@@ -1042,7 +1052,11 @@ function cellLevel(k){ // 0 green, 1 orange, 2 red, null = not enough data
   return r>=0.85?0:r>=0.55?1:2;
 }
 const LEVEL_COLOR=["#2e7d32","#f29900","#c62828"];
-function dwellBetween(a0,a1){ return intermediateStops().filter(s=>s.along>a0+30&&s.along<a1-30).length*DWELL; }
+function dwellBetween(a0,a1){ let t=0;
+  for(const s of intermediateStops()){ if(s.along<=a0+30||s.along>=a1-30) continue;
+    const measured=prof&&prof.conf[Math.min(prof.n-1,Math.floor(s.along/prof.C))]>=ASM.minConf;
+    t+=measured?DWELL*DWELL_MEASURED:DWELL; }
+  return t; }
 function travelTime(a0,a1){ // seconds: running time from the profile (timetable where none) + DWELL per station on the way
   if(a1<=a0) return {t:0,probe:false};
   const r=runTime(a0,a1); return {t:r.t+dwellBetween(a0,a1),probe:r.probe};
@@ -1053,7 +1067,7 @@ function runTime(a0,a1){
   for(let k=Math.floor(a0/C);k<prof.n&&k*C<a1;k++){const ov=Math.min(a1,(k+1)*C)-Math.max(a0,k*C); if(ov<=0) continue; t+=ov*prof.pace[k]; if(prof.conf[k]>=ASM.minConf) probe=true;}
   return {t,probe};
 }
-function advance(a0,sec){ // where the bus is after sec seconds: runs at the profile speed, pauses DWELL s at each station
+function advance(a0,sec){ // where the bus is after sec seconds: runs at the profile speed, pauses at each station (DWELL rule)
   if(!prof) return a0;
   const C=prof.C, L=routeLen(), ahead=intermediateStops().map(s=>s.along).filter(x=>x>a0+30).sort((x,y)=>x-y);
   let a=a0, rem=sec, si=0, guard=0;
@@ -1063,7 +1077,8 @@ function advance(a0,sec){ // where the bus is after sec seconds: runs at the pro
     const need=Math.max(0,end-a)*prof.pace[k];
     if(need>=rem) return a+rem/prof.pace[k];
     rem-=need; a=end;
-    if(stop){ si++; if(rem<=DWELL) return a; rem-=DWELL; }
+    if(stop){ si++; const dw=prof.conf[k]>=ASM.minConf?DWELL*DWELL_MEASURED:DWELL;   // same rule as dwellBetween
+      if(rem<=dw) return a; rem-=dw; }
     else if(a>=(k+1)*C-1e-6&&Math.floor(a/C)===k) a=(k+1)*C;   // step into next cell
   }
   return Math.min(a,L);
@@ -1149,6 +1164,10 @@ function methodPreds(b,s){ // every method's prediction for bus b at stop s (ms)
 }
 // OUR estimate: congestion model (speeds of all buses on the way), else the bus's own recent speed
 function ourPred(b,s){ if(!b||b.stale) return null; const mp=methodPreds(b,s); const t=mp.traffic??mp.est; return t!=null?Math.max(Date.now(),t):null; }
+// the alternative estimate shown beside a time (only when it differs by a minute or more)
+function altTxt(b,s,x){ if(!b) return "";
+  if(x.src==="traffic"){ const e=methodPreds(b,s).ETA; return e!=null&&Math.abs(e-x.t)>=60000?` · <span title="the operator's (Ministry of Transport) estimate">MoT ~<b>${hm(e)}</b></span>`:""; }
+  return x.src!=="est"?oursTxt(ourPred(b,s),x.t):""; }
 function oursTxt(t,ref){ return t!=null&&(ref==null||Math.abs(t-ref)>=60000)?` · <span title="our congestion-model estimate">ours ~<b>${hm(t)}</b></span>`:""; }
 // selected bus at stop s: {t} (our estimate, else best method), "passed", or null
 function bestPred(b,s){ const o=ourPred(b,s); if(o!=null) return o; const mp=methodPreds(b,s), k=methodRank().find(m=>mp[m]!=null); return k?mp[k]:null; }
@@ -1236,6 +1255,8 @@ function upcomingEtas(ref){
   for(const[c,e]of m){ if(e.eta<now-60000||now-e.seen>15*60000) continue; const s=stops.find(x=>x.code===c); if(s) out.push({code:c,eta:e.eta,s}); }
   return out.sort((a,b)=>a.eta-b.eta);
 }
+function tripDone(along,fixT){ const L=routeLen(); if(along>=L-300) return true;
+  if(along<L-7000||!prof) return false; return Date.now()>fixT+travelTime(along,L).t*1000+120000; }
 function buildModel(){
   const now=Date.now(), out=[];
   for(const[ref,m]of vehicles){
@@ -1245,7 +1266,7 @@ function buildModel(){
     const fx=all.filter(f=>tms(r)-tms(f)<=KEEP_MIN*60000);
     const behind=((r.live?newestMs:(strideNewestMs??newestMs))-tms(r))/60000;
     const silentMin=(now-tms(r))/60000, snEnd=routePts.length>1?r._sn.along:0;
-    if(snEnd>=routeLen()-300&&silentMin>3) continue;                 // reached the terminus: trip finished
+    if(silentMin>3&&routePts.length>1&&tripDone(snEnd,tms(r))) continue;   // reached the terminus: trip finished
     const stale=behind>STALE_MIN||silentMin>15;
     const sn=routePts.length>1?r._sn:{along:0,d:0};
     // recent speed along the route
@@ -1301,9 +1322,9 @@ function myStopPredictions(model){
   const now=Date.now(), preds=[], seen=new Set();
   const pos=new Map(model.map(b=>[b.ref,b]));
   const rank=methodRank();
-  for(const b of model){                                      // buses with a position: best-ranked method available
+  for(const b of model){                                      // buses with a position: congestion model, else best-ranked method
     if(b.stale||b.along>s.along-30) continue;                 // not past my stop as of its last fix
-    const mp=methodPreds(b,s); const m=rank.find(k=>mp[k]!=null); if(!m) continue;
+    const mp=methodPreds(b,s); const m=mp.traffic!=null?"traffic":rank.find(k=>mp[k]!=null); if(!m) continue;
     preds.push({t:Math.max(now,mp[m]),src:m,ref:b.ref}); seen.add(b.ref);
   }
   for(const[ref,m]of liveEta){const e=m.get(s.code), b=pos.get(ref);  // buses without a position (not moving yet)
@@ -1406,7 +1427,7 @@ function passedMyStop(){
     if(!hit||now-hit.t>HISTORY_MIN*60000||hit.t>now) continue;
     const last=fx[fx.length-1], la=sn(last).along;
     const further=stops.filter(x=>x.along>s.along+30&&x.along<=la+30).length;
-    out.push({ref,...hit,further,end:la>=routeLen()-300,live:!!last.live,lastT:tms(last)});
+    out.push({ref,...hit,further,end:now-tms(last)>3*60000&&tripDone(la,tms(last)),live:!!last.live,lastT:tms(last)});
   }
   return out.sort((a,b)=>a.t-b.t).slice(-2);           // the last two, oldest first
 }
@@ -1444,7 +1465,7 @@ function renderBoard(model){
     const away=b&&!b.stale?stopsAway(b,s):null;
     const from=[away!=null?(away===0?"arriving":`${away} stop${away===1?"":"s"} away`):"", st!=null?`${st>now?"departs":"departed"} <span class="rtl">${esc(org)}</span> ${hm(st)}`:""].filter(Boolean).join(" · ");
     h+=`<div class="brow"${b?` data-ref="${esc(b.ref)}"`:""}><div class="bmin">${m===0?"now":m<60?`${m}<small> min</small>`:esc(waitTxt(x.t,true))}</div>
-      <div class="binfo"><div><b>${hm(x.t)}</b> ${badge} ${b?delayHtml(b):""}${x.src!=="traffic"&&x.src!=="est"?oursTxt(ourPred(b,s),x.t):""}</div><div class="mut">${from}</div></div></div>`;
+      <div class="binfo"><div><b>${hm(x.t)}</b> ${badge} ${b?delayHtml(b):""}${altTxt(b,s,x)}</div><div class="mut">${from}</div></div></div>`;
   }
   el.innerHTML=h;
 }
@@ -1490,7 +1511,7 @@ function renderHero(model){
   const m=Math.max(0,Math.round((p[0].t-Date.now())/60000));
   $("heroMin").textContent=waitTxt(p[0].t);
   const nb0=p[0].ref&&model.find(b=>b.ref===p[0].ref);
-  $("heroTxt").innerHTML=(NEXT_DAY?`No service today · `:"")+`Next <b>${esc(title.num)}</b> at ${NEXT_DAY&&p[0].t>Date.now()+12*3600000?NEXT_DAY+" ":""}${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}${p[0].src!=="traffic"&&p[0].src!=="est"?oursTxt(ourPred(nb0,s),p[0].t):""}`;
+  $("heroTxt").innerHTML=(NEXT_DAY?`No service today · `:"")+`Next <b>${esc(title.num)}</b> at ${NEXT_DAY&&p[0].t>Date.now()+12*3600000?NEXT_DAY+" ":""}${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}${altTxt(nb0,s,p[0])}`;
   const ps=passedMyStop(), g=[...ps].reverse().find(x=>!x.before), gb=ps[ps.length-1], ago=g?Math.round((Date.now()-g.t)/60000):null;
   const missed=g&&ago<=20?`<span class="${ago<=5?"d-early":""}">${ago<=5?"Just missed one":"Last one"}: passed ${ago<=1?"a minute":ago+" min"} ago</span>`
               :gb&&gb.before&&Date.now()-gb.t<=20*60000?`One passed before ${hm(gb.t)}`:"";
