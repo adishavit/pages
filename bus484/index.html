@@ -226,7 +226,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 
 /* first-run hint: stations pulse until a stop is chosen */
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(21,101,192,.55)}50%{box-shadow:0 0 0 5px rgba(21,101,192,0)}}
-#strip.pick .sd{animation:pulse 1.6s ease-in-out infinite}
+#strip.pick .sd{animation:pulse 1.6s ease-in-out infinite}@media (prefers-reduced-motion:reduce){#strip.pick .sd{animation:none}}
 .card.hint{border:1px dashed var(--acc)}
 /* my-stop board */
 .brow{display:flex;align-items:center;gap:12px;padding:8px 2px;border-bottom:1px solid var(--line)}
@@ -316,7 +316,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v170"; window.__appStarted=true;
+const VERSION="v171"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -585,7 +585,7 @@ function tickEst(jump){
   for(const[,e]of estMarkers){
     const a=estAlongNow(e), show=a-e.along>50;
     e.m.setOpacity(show?1:0);
-    if(show){ const p=pointAt(a); jump?e.m.setLatLng(p):animate(e,p,1000); }   // glide 1 s per step
+    if(show){ const p=pointAt(a); jump?e.m.setLatLng(p):animate(e,p,1000,true); }   // glide 1 s per step, constant speed
   }
 }
 setInterval(()=>tickEst(false),1000);
@@ -1379,10 +1379,12 @@ function busIcon(b,est){
   const cls=(est?"est":b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":"");
   return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${cls}${SEL_BUS===b.ref?" sel":""}">${busTagHtml(b,est)}</div>`});
 }
-function animate(entry,to,D=1200){
+const REDUCE=window.matchMedia?matchMedia("(prefers-reduced-motion: reduce)"):{matches:false};   // phone setting: no gliding, rolling or pulsing
+function animate(entry,to,D=1200,linear=false){   // linear: the 1-s steps of the estimated position must chain at constant speed (eased steps stop and start every second)
   const from=entry.m.getLatLng(); if(from.lat===to[0]&&from.lng===to[1]) return;
+  if(REDUCE.matches){ cancelAnimationFrame(entry.raf); entry.m.setLatLng(to); return; }
   const t0=performance.now();
-  const step=now=>{const k=Math.min(1,(now-t0)/D),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+  const step=now=>{const k=Math.min(1,(now-t0)/D),e=linear?k:k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
     entry.m.setLatLng([from.lat+(to[0]-from.lat)*e,from.lng+(to[1]-from.lng)*e]); if(k<1) entry.raf=requestAnimationFrame(step);};
   cancelAnimationFrame(entry.raf); entry.raf=requestAnimationFrame(step);
 }
@@ -1523,7 +1525,7 @@ function renderHero(model){
   // headline: "● 3 min to <stop>"; quiet line: live status · time · next buses; then a recently-passed note and the
   // getting-off stop. The coloured dot matches the stop on the strip (yellow = boarding, blue = getting off).
   const s=myStop(), ts=toStop(), dot=$("heroDot"), sn=x=>`<span class="rtl">${esc(shortName(x.name))}</span>`;
-  const set=(min,txt,line,next,d,src=null,atv="")=>{ HERO_SRC=src; $("heroAt").innerHTML=atv; $("heroMin").textContent=min; const tx=$("heroTxt"); tx.innerHTML=txt.html; tx.classList.toggle("msg",!!txt.msg);
+  const set=(min,txt,line,next,d,src=null,atv="")=>{ HERO_SRC=src; $("heroAt").innerHTML=atv; { const mn=$("heroMin"), prev=mn.textContent; mn.textContent=min; if(prev!==String(min)&&prev!=="–"&&!REDUCE.matches&&mn.animate) mn.animate([{transform:"translateY(40%)",opacity:0},{transform:"none",opacity:1}],{duration:320,easing:"cubic-bezier(.2,.8,.2,1)"}); } const tx=$("heroTxt"); tx.innerHTML=txt.html; tx.classList.toggle("msg",!!txt.msg);
     $("heroStop").innerHTML=line||""; $("heroNext").innerHTML=next||""; dot.className=d==null?"off":d; renderFresh(); };
   const at=(x,t)=>`<i></i><b title="At ${esc(shortName(x.name))}">~${hm(t)}</b>`;   // right of the headline; the blue dot = the getting-off stop
   const sb=SEL_BUS&&model.find(b=>b.ref===SEL_BUS);
