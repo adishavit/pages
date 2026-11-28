@@ -318,7 +318,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v176"; window.__appStarted=true;
+const VERSION="v177"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1422,7 +1422,7 @@ function renderMap(model){
       e.m.on("click",ev=>{ L.DomEvent.stopPropagation(ev); selectBus(ref); }); }
     else e.m.setIcon(busIcon(b));
     Object.assign(e,{along:b.along,fixT:tms(b.r),sp:b.sp,start:b.start,stale:b.stale,fix:[b.r.lat,b.r.lon]});
-    e.m.bindTooltip(`${esc(title.num)} ${b.start!=null?hm(b.start)+" dep. · ":""}estimated position now · last report ${hms(tms(b.r))} (${b.live?"live":"recent"})`);
+    e.m.bindTooltip(`<b>${esc(title.num)}</b>${b.start!=null?` · dep. ${hm(b.start)}`:""}<br>seen ${hm(tms(b.r))}`);
   }
   for(const[ref,e]of busMarkers) if(!keep.has(ref)){e.m.remove();busMarkers.delete(ref);}
   estLayer.clearLayers();   // the selected bus also shows where it was last reported, and how long ago
