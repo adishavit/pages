@@ -14,7 +14,7 @@
 @font-face{font-family:BusUI;font-weight:600;font-display:swap;src:url(fonts/inter-latin-600.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:BusUI;font-weight:600;font-display:swap;src:url(fonts/heebo-hebrew-600.woff2) format("woff2");unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
 @font-face{font-family:BusUI;font-weight:700;font-display:swap;src:url(fonts/inter-latin-700.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:BusUI;font-weight:700;font-display:swap;src:url(fonts/heebo-hebrew-700.woff2) format("woff2");unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
 @font-face{font-family:BusUI;font-weight:800;font-display:swap;src:url(fonts/inter-latin-800.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:BusUI;font-weight:800;font-display:swap;src:url(fonts/heebo-hebrew-800.woff2) format("woff2");unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
-:root{--ease-out:cubic-bezier(.22,1,.36,1);--ease-io:cubic-bezier(.65,0,.35,1);--bg:#fff;--fg:#1b1b1f;--mut:#6b6f76;--line:#e6e7ea;--card:#f6f7f9;--acc:#1565c0;--live:#283593;--sig:#2e7d32;--str:#4f5fc2;--old:#9aa0a6;--warn:#b26a00;--late:#c62828;--ok:#2e7d32;--sheet-shadow:0 -6px 24px rgba(0,0,0,.18)}
+:root{--ease-out:cubic-bezier(.22,1,.36,1);--ease-io:cubic-bezier(.65,0,.35,1);--bg:#fff;--fg:#1b1b1f;--mut:#6b6f76;--line:#e6e7ea;--card:#f6f7f9;--acc:#1565c0;--live:#283593;--sig:#2e7d32;--str:#4f5fc2;--old:#9aa0a6;--warn:#b26a00;--late:#c62828;--ok:#2e7d32;--sheet-shadow:0 -2px 6px rgba(0,0,0,.06),0 -14px 40px rgba(0,0,0,.16)}
 @media (prefers-color-scheme:dark){:root{--bg:#17181b;--fg:#ececf0;--mut:#9aa0a6;--line:#2b2d31;--card:#202226;--acc:#64a0ff;--sheet-shadow:0 -6px 24px rgba(0,0,0,.6)}
   .invert-dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9)} .leaflet-container{background:#111}}
 *{box-sizing:border-box}
@@ -27,22 +27,23 @@ button{font:inherit;color:inherit;cursor:pointer}
 /* top bar */
 #top{position:absolute;z-index:1000;top:calc(8px + env(safe-area-inset-top));left:8px;right:8px;display:flex;gap:6px;align-items:center;pointer-events:none}
 #top>*{pointer-events:auto}
-.chip{background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:7px 12px;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:14px;white-space:nowrap}
-#lineChip{flex:1;min-width:0;display:flex;align-items:center;text-align:left;font-weight:600;padding-right:0}
+.chip{background:var(--bg);border:0;border-radius:999px;padding:7px 12px;box-shadow:0 1px 2px rgba(0,0,0,.10),0 6px 18px rgba(0,0,0,.12);font-size:14px;white-space:nowrap}
+#lineChip{flex:1;min-width:0;display:flex;align-items:center;text-align:left;font-weight:600;padding:10px 0 10px 14px}
 .rt{font-weight:600}
 #lineChip .lt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#swap{flex:0 0 auto;display:grid;place-items:center;width:40px;align-self:stretch;margin:-7px 0 -7px 6px;border-left:1px solid var(--line);color:var(--acc);border-radius:0 999px 999px 0}
+#swap{flex:0 0 auto;display:grid;place-items:center;width:44px;align-self:stretch;margin:-10px 0 -10px 6px;border-left:1px solid var(--line);color:var(--acc);border-radius:0 999px 999px 0}
 #swap:active{background:var(--card)}
-#lineChip .num{display:inline-block;background:var(--acc);color:#fff;border-radius:6px;padding:0 6px;margin-right:6px}
-.icon{width:38px;height:38px;padding:0;display:grid;place-items:center;font-size:17px}
+#lineChip .num{display:inline-block;background:var(--acc);color:#fff;border-radius:8px;padding:1px 8px;margin-right:6px;font-weight:700}
+.icon{width:44px;height:44px;padding:0;display:grid;place-items:center;font-size:17px}
 .icon.on{background:var(--acc);color:#fff}
+@media (prefers-color-scheme:dark){.chip{border:1px solid var(--line)}#grab i{background:#3a3d42}}
 .leaflet-control-attribution{font-size:10px}
 /* bottom sheet */
-#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,310px);background:var(--bg);border-radius:16px 16px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .32s var(--ease-out);padding-bottom:env(safe-area-inset-bottom)}
+#sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,310px);background:var(--bg);border-radius:26px 26px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .32s var(--ease-out);padding-bottom:env(safe-area-inset-bottom)}
 #sheet.drag{transition:none}
 #grab{position:relative;z-index:5;padding:12px 0 11px;touch-action:none;cursor:grab}
 #grab::before{content:"";position:absolute;left:0;right:0;top:-16px;bottom:0}   /* 44 px touch target (HIG), reaching a bit above the panel */
-#grab i{display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto}
+#grab i{display:block;width:44px;height:5px;border-radius:3px;background:#d4d6da;margin:0 auto}
 #strip{position:relative;height:108px;margin:0 16px;touch-action:none}
 #grab,#strip,#hero{flex-shrink:0}   /* only the tab content may shrink, or bus tags spill into the hero */
 #stripIn{position:absolute;inset:0}
@@ -314,7 +315,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v164"; window.__appStarted=true;
+const VERSION="v165"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
