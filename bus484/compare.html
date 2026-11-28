@@ -1,0 +1,56 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>bus484 map style comparison</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>body{margin:0;font:14px system-ui,sans-serif;background:#fff}h2{margin:10px 8px 4px;font-size:15px}.row{display:flex;gap:6px;padding:0 6px 6px}.c{flex:1;min-width:0}.c b{display:block;font-size:12px;margin:2px 0}.m{height:46vh;min-height:300px;border-radius:8px;overflow:hidden}.hint{margin:6px 8px;color:#666;font-size:12px}@media(max-width:700px){.row{flex-direction:column}}</style>
+<div class="hint">Same view, panning and zooming are synced. Google Maps itself cannot be shown here (its tiles are only licensed inside Google's own products); CARTO Voyager is the closest Google-like open style.</div>
+<h2>Light</h2><div class="row" id="L"></div><h2>Dark</h2><div class="row" id="D"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.2/leaflet-maplibre-gl.js"></script>
+<script>
+const CARTO_KEY="cb1_5ffa_1_c34b73c1f350ef400374bf6f";   // CARTO basemaps key (free, non-commercial; public by nature: it is in every tile URL)
+const ct=n=>`https://basemaps.cartocdn.com/rastertiles/${n}/{z}/{x}/{y}.png?key=${CARTO_KEY}`;
+const PLURIBUS={
+  light:{land:"#f4f2ee",resid:"#eeebe4",park:"#dde8d3",wood:"#d8e3cd",water:"#c9dcee",waterway:"#c0d5ea",bldg:"#e6e2d9",minor:"#ffffff",minorC:"#e2ded4",major:"#ffffff",majorC:"#cfc9bb",trunk:"#fde8a6",trunkC:"#e3c777",mway:"#fbd673",mwayC:"#e0b04a",path:"#d2cdc1",rail:"#b9b5ad",lab:"#4a4f57",halo:"#ffffff",place:"#2f3338",wlab:"#5b88b5"},
+  dark: {land:"#181a1f",resid:"#1c1e24",park:"#1d261f",wood:"#1b241e",water:"#11202e",waterway:"#16293a",bldg:"#23262c",minor:"#2b2e36",minorC:"#1e2026",major:"#363a44",majorC:"#20232a",mway:"#444956",mwayC:"#262932",path:"#3a3e47",rail:"#4a4e57",lab:"#9aa0aa",halo:"#181a1f",place:"#c5cad2",wlab:"#5d86ad"}};
+function pluribusStyle(mode){
+  const P=PLURIBUS[mode], cls=l=>["in",["get","class"],["literal",l]], F=["Noto Sans Regular"], FB=["Noto Sans Bold"];
+  const w=(a,b,c)=>["interpolate",["exponential",1.4],["zoom"],10,a,14,b,18,c];
+  const road=(id,cl,col,wd,extra={})=>({id,type:"line",source:"om","source-layer":"transportation",filter:["all",cls(cl),["!=",["get","brunnel"],"tunnel"]],layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":col,"line-width":wd,...extra}});
+  const name=(id,sl,filter,size,col,font,extra={})=>{ const {minzoom,...lay}=extra; return {id,type:"symbol",source:"om","source-layer":sl,filter,...(minzoom!=null?{minzoom}:{}),layout:{"text-field":["get","name"],"text-font":font,"text-size":size,"text-max-width":8,"text-padding":2,...lay},paint:{"text-color":col,"text-halo-color":P.halo,"text-halo-width":1.4,"text-halo-blur":.3}}; };
+  return {version:8,name:"Pluribus "+mode,
+    glyphs:"https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+    sources:{om:{type:"vector",url:"https://tiles.openfreemap.org/planet"}},
+    layers:[
+      {id:"bg",type:"background",paint:{"background-color":P.land}},
+      {id:"resid",type:"fill",source:"om","source-layer":"landuse",filter:cls(["residential","suburb","neighbourhood"]),paint:{"fill-color":P.resid}},
+      {id:"park",type:"fill",source:"om","source-layer":"park",paint:{"fill-color":P.park}},
+      {id:"wood",type:"fill",source:"om","source-layer":"landcover",filter:cls(["wood","grass"]),paint:{"fill-color":P.wood,"fill-opacity":.8}},
+      {id:"water",type:"fill",source:"om","source-layer":"water",paint:{"fill-color":P.water}},
+      {id:"waterway",type:"line",source:"om","source-layer":"waterway",paint:{"line-color":P.waterway,"line-width":w(.5,1.2,3)}},
+      {id:"bldg",type:"fill",source:"om","source-layer":"building",minzoom:14,paint:{"fill-color":P.bldg,"fill-opacity":["interpolate",["linear"],["zoom"],14,0,16,.9]}},
+      road("path-c",["path","track","pedestrian"],P.path,w(.3,.6,1.2),{"line-dasharray":[2,2]}),
+      road("minor-c",["minor","service","busway"],P.minorC,w(1,3.2,9)),
+      road("minor",["minor","service","busway"],P.minor,w(.6,2.2,7.5)),
+      road("major-c",["secondary","tertiary"],P.majorC,w(1.4,4.2,12)),
+      road("major",["secondary","tertiary"],P.major,w(1,3.2,10.5)),
+      road("trunk-c",["trunk","primary"],P.trunkC||P.majorC,w(1.8,5,14)),
+      road("trunk",["trunk","primary"],P.trunk||P.major,w(1.3,3.9,12.5)),
+      road("mway-c",["motorway"],P.mwayC,w(2,5.6,16)),
+      road("mway",["motorway"],P.mway,w(1.5,4.4,14)),
+      {id:"rail",type:"line",source:"om","source-layer":"transportation",filter:cls(["rail","transit"]),paint:{"line-color":P.rail,"line-width":w(.5,1,2),"line-dasharray":[3,2]}},
+      name("road-name","transportation_name",["all",["has","name"],cls(["motorway","trunk","primary","secondary","tertiary","minor"])],11,P.lab,F,{"symbol-placement":"line","text-letter-spacing":.02}),
+      name("water-name","water_name",["has","name"],11,P.wlab,F,{"text-max-width":6}),
+      name("place-small","place",cls(["suburb","neighbourhood","village","hamlet"]),11,P.lab,F,{minzoom:12}),
+      name("place-town","place",cls(["town"]),13,P.place,FB,{minzoom:9}),
+      name("place-city","place",cls(["city"]),15,P.place,FB,{minzoom:5})
+    ]};
+}
+
+const ATTR='© OpenStreetMap contributors © CARTO · OpenFreeMap © OpenMapTiles';
+const sets={L:[["CARTO Voyager (closest to Google)",()=>L.tileLayer(ct("voyager"),{maxZoom:20,attribution:ATTR})],["CARTO Voyager, muted 65%",()=>L.tileLayer(ct("voyager"),{maxZoom:20}),"saturate(.65) contrast(.96) brightness(1.03)"],["Pluribus Light",()=>L.maplibreGL({style:pluribusStyle("light")})]],
+ D:[["CARTO Dark Matter",()=>L.tileLayer(ct("dark_all"),{maxZoom:20,attribution:ATTR})],["CARTO Dark, no labels",()=>L.tileLayer(ct("dark_nolabels"),{maxZoom:20})],["Pluribus Dark",()=>L.maplibreGL({style:pluribusStyle("dark")})]]};
+const maps=[]; let busy=false; const q=new URLSearchParams(location.search), c0=[+(q.get("lat")||32.0786),+(q.get("lon")||34.7745)], z0=+(q.get("z")||14.5);
+for(const k of ["L","D"]) for(const [name,mk,filter] of sets[k]){ const d=document.createElement("div"); d.className="c"; d.innerHTML=`<b>${name}</b><div class="m"></div>`; document.getElementById(k).appendChild(d);
+  const m=L.map(d.querySelector(".m"),{zoomControl:false,zoomSnap:.25,attributionControl:false}).setView(c0,z0); const lay=mk().addTo(m); if(filter&&lay.getContainer) lay.getContainer().style.filter=filter;
+  L.polyline([[32.0725,34.7690],[32.0786,34.7745],[32.0840,34.7790],[32.0905,34.7860]],{color:"#4f5fc2",weight:6,opacity:.9}).addTo(m);
+  for(const p of [[32.0786,34.7745],[32.0905,34.7860]]) L.circleMarker(p,{radius:6,color:"#4f5fc2",fillColor:"#fff",fillOpacity:1,weight:3}).addTo(m);
+  m.on("move",()=>{ if(busy) return; busy=true; for(const o of maps) if(o!==m) o.setView(m.getCenter(),m.getZoom(),{animate:false}); busy=false; }); maps.push(m); }
+</script>
