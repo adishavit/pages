@@ -1,0 +1,71 @@
+# Every-station replay of the bus484 prediction model (tools/replay). Triggered by editing tools/replay/RUN.
+name: every-station replay
+on:
+  push:
+    branches: [main]
+    paths: ["tools/replay/RUN"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      days: ${{ steps.days.outputs.days }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install brotli requests
+      - id: days
+        working-directory: tools/replay
+        run: |
+          D=$(grep '^days=' RUN | cut -d= -f2)
+          if [ "$D" = "auto5" ]; then   # the last 5 Sun-Thu days still in the raw archive (~7 days kept)
+            D=$(python3 -c "import datetime as d;t=d.date.today();print(' '.join(str(x) for x in sorted(t-d.timedelta(k) for k in range(1,8) if (t-d.timedelta(k)).weekday() in (6,0,1,2,3))[-5:]))")
+          fi
+          echo "days=$D" >> "$GITHUB_OUTPUT"; echo "days: $D"
+      - working-directory: tools/replay
+        run: python3 fetchraw.py ${{ steps.days.outputs.days }}
+      - uses: actions/upload-artifact@v4
+        with: { name: raw, path: tools/replay/raw, retention-days: 30 }
+  replay:
+    needs: fetch
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        line: ["484 19094", "480 7020", "19 10802"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with: { name: raw, path: tools/replay/raw }
+      - working-directory: tools/replay
+        run: npm install --no-audit --no-fund
+      - working-directory: tools/replay
+        env: { MAXTRIPS: "16", NODE_OPTIONS: "--max-old-space-size=6000" }
+        run: |
+          set -- ${{ matrix.line }}
+          node replay.js $1 $2 ${{ needs.fetch.outputs.days }} 2>&1 | grep -v '^    at \|Not implemented\|trace-warnings'
+          gzip -k out/$1.jsonl; echo "LINE=$1" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with: { name: "out-${{ env.LINE }}", path: "tools/replay/out/*.jsonl.gz", retention-days: 30 }
+  score:
+    needs: replay
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { pattern: "out-*", path: tools/replay/out, merge-multiple: true }
+      - working-directory: tools/replay
+        run: |
+          gunzip -f out/*.jsonl.gz
+          python3 score.py
+          echo "SUMMARY_JSON_BEGIN"; cat summary.json; echo "SUMMARY_JSON_END"
+      - uses: actions/upload-artifact@v4
+        with: { name: summary, path: tools/replay/summary.json, retention-days: 90 }

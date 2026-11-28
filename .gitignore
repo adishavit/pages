@@ -1,2 +1,7 @@
 tests/bus484/node_modules
 bus484/agent-bias-report.md
+tools/replay/raw/
+tools/replay/out/
+tools/replay/cache/
+tools/replay/node_modules/
+tools/replay/summary.json

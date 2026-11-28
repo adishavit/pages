@@ -1,0 +1,2 @@
+{ "private": true, "description": "Every-station replay of the bus484 prediction model (see README.md)",
+  "dependencies": { "jsdom": "^24.1.3", "leaflet": "1.9.4" } }
