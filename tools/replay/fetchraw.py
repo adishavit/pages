@@ -59,4 +59,5 @@ def day_file(day):
     os.replace(path + ".tmp", path)
     print(day, len(rows), "rows,", failed, "minutes failed", flush=True)
 
+os.makedirs("raw", exist_ok=True)
 for day in sys.argv[1:]: day_file(day)
