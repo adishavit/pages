@@ -141,6 +141,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 #sheet.glide #strip,#sheet.glide #stripIn{transition:none}
 #sheet.glide .slab,#sheet.glide .sdest,#sheet.glide .sgap,#sheet.glide .sbus{opacity:var(--labA,1)!important;transition:none}
 #sheet.peek .sfix{transform:scale(1.6)}
+#heroMin,#heroTxt,#heroAt{transition:font-size .25s var(--ease-out)}#sheet.glide #heroMin,#sheet.glide #heroTxt,#sheet.glide #heroAt{transition:none}
 #sheet.peek #heroMin{font-size:26px}#sheet.peek #heroSig{margin-top:-6px}#sheet.peek #heroAt{font-size:14px}#sheet.peek #heroTxt{font-size:16px}
 #sheet.peek #hero{padding-bottom:4px}
 
@@ -306,7 +307,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v160"; window.__appStarted=true;
+const VERSION="v161"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -2055,6 +2056,7 @@ function setSheet(i){ sheetIdx=Math.max(0,Math.min(3,i)); const sh=$("sheet");
   sh.classList.add("glide"); sh.classList.toggle("peek",sheetIdx===0);
   const h=SNAP()[sheetIdx]; void sh.offsetHeight; sh.classList.remove("glide");
   document.documentElement.style.setProperty("--h",h+"px"); }
+const FONTS=[$("heroMin"),$("heroTxt"),$("heroAt")];
 (function drag(){
   // Dragging the panel between its minimal (Peek) and normal (Glance) heights is one continuous transition, both ways:
   // the strip glides between its minimal and normal places (slower than the handle), the lines under it collapse or
@@ -2063,17 +2065,21 @@ function setSheet(i){ sheetIdx=Math.max(0,Math.min(3,i)); const sh=$("sheet");
   const sh=$("sheet"); let y0=null,h0=0,moved=false, M=null;
   const measure=()=>{ const pk=sh.classList.contains("peek"); sh.classList.add("glide");   // no transitions while measuring
     sh.classList.remove("peek"); const snaps=SNAP(), stripN=$("strip").offsetHeight, ht=$("heroTop").offsetHeight, hn=$("heroNext").offsetHeight;
+    const fs=()=>FONTS.map(e=>parseFloat(getComputedStyle(e).fontSize)), fN=fs(), mN=parseFloat(getComputedStyle($("heroSig")).marginTop);
     sh.classList.add("peek"); const strip0=$("strip").offsetHeight, m=getComputedStyle($("stripIn")).transform, ty0=m&&m!=="none"?+(m.match(/-?[\d.]+/g)||[])[5]||0:0;
+    const fP=fs(), mP=parseFloat(getComputedStyle($("heroSig")).marginTop);
     sh.classList.toggle("peek",pk); void sh.offsetHeight;   // settle the restored layout while transitions are still off
-    sh.classList.remove("glide"); return {snaps,stripN,strip0,ty0,ht,hn}; };   // (else the measuring started transitions: jitter on touch)
+    sh.classList.remove("glide"); return {snaps,stripN,strip0,ty0,ht,hn,fN,fP,mN,mP}; };   // (else the measuring started transitions: jitter on touch)
   const glide=t=>{ const a=$("strip"), b=$("stripIn"), ht=$("heroTop"), hn=$("heroNext");
-    if(t==null){ sh.classList.remove("glide"); for(const e of [a,b,ht,hn]) e.style.cssText=""; sh.style.removeProperty("--labA"); return; }
+    if(t==null){ sh.classList.remove("glide"); for(const e of [a,b,ht,hn,...FONTS,$("heroSig")]) e.style.cssText=""; sh.style.removeProperty("--labA"); return; }
     const e=t*t*(3-2*t);   // smoothstep: eases at both ends
     sh.classList.add("glide"); sh.classList.remove("peek");
     a.style.height=(M.strip0+(M.stripN-M.strip0)*e)+"px";   // no clipping: names/tags are faded instead (clipping flashed them)
     b.style.transform=`translateY(${(M.ty0*(1-e)).toFixed(1)}px)`;
     ht.style.cssText=`max-height:${(M.ht*e).toFixed(1)}px;overflow:hidden;opacity:${e.toFixed(3)}`;
     hn.style.cssText=`max-height:${(M.hn*e).toFixed(1)}px;overflow:hidden;opacity:${e.toFixed(3)}`;
+    FONTS.forEach((el,i)=>el.style.fontSize=(M.fP[i]+(M.fN[i]-M.fP[i])*e).toFixed(2)+"px");   // headline text grows/shrinks with the drag, not in one jump
+    $("heroSig").style.marginTop=(M.mP+(M.mN-M.mP)*e).toFixed(2)+"px";
     sh.style.setProperty("--labA",Math.max(0,Math.min(1,(t-.45)/.55)).toFixed(3)); };   // names fade in over the upper half
   const down=e=>{y0=e.clientY;h0=sh.getBoundingClientRect().height;moved=false;M=measure();
     sh.classList.add("drag");e.target.setPointerCapture&&e.target.setPointerCapture(e.pointerId);};
