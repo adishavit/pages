@@ -318,7 +318,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v175"; window.__appStarted=true;
+const VERSION="v176"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1906,7 +1906,7 @@ function renderStrip(model){
 
   for(const b of model){
     const cls=(b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":"");
-    h+=`<i class="sfix ${cls}" style="left:${stripX(b.along)}%"></i>`;
+    if(SEL_BUS===b.ref) h+=`<i class="sfix ${cls}" style="left:${stripX(b.along)}%" title="last reported here"></i>`;   // the last-report dot only for the selected bus (it sat on top of stations)
     h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}" id="sb-${esc(b.ref)}" style="left:${stripX(busNowAlong(b))}%">${busTagHtml(b,false)}</span>`;
   }
   { const a=meAlong(); if(a!=null) h+=`<i class="smedot" style="left:${stripX(a)}%;top:52px" title="You are here"></i>`; }
@@ -1980,7 +1980,7 @@ function renderLoopStrip(model){
   });
   for(const b of model){
     const cls=(b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":""), f=loopAt(stripUraw(b.along)), n=loopAt(stripUraw(busNowAlong(b)));
-    h+=`<i class="sfix ${cls}" style="left:${pc(f.x)}%;top:${f.y}px"></i>`;
+    if(SEL_BUS===b.ref) h+=`<i class="sfix ${cls}" style="left:${pc(f.x)}%;top:${f.y}px" title="last reported here"></i>`;
     h+=`<span class="sbus ${cls}${SEL_BUS===b.ref?" focus":""}${n.lo?" lo":""}" id="sb-${esc(b.ref)}" data-y="${n.y}" style="left:${pc(n.x)}%">${busTagHtml(b,false)}</span>`;
   }
   { const a=meAlong(); if(a!=null){ const q=loopAt(stripUraw(a)); h+=`<i class="smedot" style="left:${pc(q.x)}%;top:${q.y}px" title="You are here"></i>`; } }
