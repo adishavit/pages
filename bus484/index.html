@@ -316,7 +316,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v172"; window.__appStarted=true;
+const VERSION="v173"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -547,6 +547,10 @@ const STYLES={
   voyagerlite:{name:"Google-like, quieter labels (CARTO Voyager)", carto:"rastertiles/voyager_labels_under", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
   positron: {name:"Clean light (CARTO Positron)", carto:"rastertiles/light_all", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
   dark:     {name:"Clean dark (CARTO Dark Matter)", carto:"rastertiles/dark_all", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
+  soft:     {name:"Soft (Voyager, muted colours)", carto:"rastertiles/voyager", filter:"saturate(.35) contrast(.92) brightness(1.05)", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
+  focus:    {name:"Route focus (light, no labels)", carto:"rastertiles/light_nolabels", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
+  esrigray: {name:"Light gray (Esri)", url:"https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", attr:"Tiles © Esri — Esri, DeLorme, NAVTEQ", max:16},
+  darkfocus:{name:"Dark, no labels (CARTO)", carto:"rastertiles/dark_nolabels", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
 };
 let MAP_STYLE=qs.get("map")||load("mapstyle2")||"voyager";
 if(!Object.prototype.hasOwnProperty.call(STYLES,MAP_STYLE)) MAP_STYLE="osm";
@@ -558,6 +562,7 @@ function setMapStyle(id,initial){
   if(!map) return;
   if(baseLayer) baseLayer.remove();
   baseLayer=L.tileLayer(styleUrl(st),{maxZoom:st.max,attribution:st.attr}).addTo(map);
+  { const bc=baseLayer.getContainer&&baseLayer.getContainer(); if(bc) bc.style.filter=st.filter||""; }   // optional per-style tone (e.g. muted colours)
   let errs=0; baseLayer.on("tileerror",()=>{ if(++errs===4){ log(`map style ${id}: tiles failing${st.carto?" (CARTO key or quota?)":""}`); if(id!=="osm"){toast("Map style failed — back to Standard");setMapStyle("osm");} } });
   map.getContainer().classList.toggle("invert-dark",!!st.invert);
   const sel=$("mapStyle"); if(sel) sel.value=id;
