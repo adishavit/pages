@@ -316,7 +316,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v169"; window.__appStarted=true;
+const VERSION="v170"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1290,6 +1290,7 @@ function upcomingEtas(ref){
 }
 function tripDone(along,fixT){ const L=routeLen(); if(along>=L-300) return true;
   if(along<L-7000||!prof) return false; return Date.now()>fixT+travelTime(along,L).t*1000+120000; }
+const OFF_ROUTE_M=600;
 function buildModel(){
   const now=Date.now(), out=[];
   for(const[ref,m]of vehicles){
@@ -1302,6 +1303,7 @@ function buildModel(){
     if(silentMin>3&&routePts.length>1&&tripDone(snEnd,tms(r))) continue;   // reached the terminus: trip finished
     const stale=behind>STALE_MIN||silentMin>15;
     const sn=routePts.length>1?r._sn:{along:0,d:0};
+    if(routePts.length>1&&sn.d>OFF_ROUTE_M&&ref!==SEL_BUS) continue;   // not on this route (depot run, other variant, parked off the road): no tag, no ETA
     // recent speed along the route
     let sp=0; const old=fx.find(f=>tms(r)-tms(f)<=10*60000);
     if(old&&old!==r){const dt=(tms(r)-tms(old))/1000; if(dt>=90) sp=Math.max(0,(sn.along-old._sn.along)/dt);}
