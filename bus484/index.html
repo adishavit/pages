@@ -36,7 +36,6 @@ button{font:inherit;color:inherit;cursor:pointer}
 #lineChip .num{display:inline-block;background:var(--acc);color:#fff;border-radius:8px;padding:1px 8px;margin-right:6px;font-weight:700}
 .icon{width:44px;height:44px;padding:0;display:grid;place-items:center;font-size:17px;color:#3c4043}@media (prefers-color-scheme:dark){.icon{color:var(--fg)}}
 .icon.on{background:var(--acc);color:#fff}   /* location on: filled blue */
-@media (prefers-color-scheme:dark){.chip{border:1px solid var(--line)}#grab i{background:#3a3d42}}
 .leaflet-control-attribution{font-size:10px}
 /* bottom sheet */
 #sheet{position:absolute;z-index:1001;left:0;right:0;bottom:0;height:var(--h,310px);background:var(--bg);border-radius:26px 26px 0 0;box-shadow:var(--sheet-shadow);display:flex;flex-direction:column;transition:height .32s var(--ease-out);padding-bottom:env(safe-area-inset-bottom)}
@@ -253,6 +252,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 .sbus{cursor:pointer}
 #pick .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:15px}
 #pick input{width:150px}
+/* dark: chips keep a hairline (a shadow barely shows); handle and bus/live colours lifted for contrast */
+@media (prefers-color-scheme:dark){.chip{border:1px solid var(--line)}#grab i{background:#3a3d42}:root{--live:#9fa8ff;--str:#7c8cf0;--sig:#66bb6a}}
 </style>
 </head>
 <body>
@@ -315,7 +316,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v166"; window.__appStarted=true;
+const VERSION="v167"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
