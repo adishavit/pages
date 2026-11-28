@@ -100,13 +100,21 @@ button{font:inherit;color:inherit;cursor:pointer}
 #strip.loop .sbus.lo::after,#strip.loop .sbus.lo.r2::after{top:calc(-1 * var(--ph,10px));height:var(--ph,10px)}
 #strip.loop .sbus.lo::before,#strip.loop .sbus.lo.r2::before{top:calc(-2px - var(--ph,10px));clip-path:polygon(50% 0,100% 100%,0 100%)}
 #sheet.peek #strip.loop{height:42px}#sheet.peek #strip.loop #stripIn{transform:translateY(-94px)}   /* both bars (104 / 126 px) plus dot radius */
-#hero{padding:4px 16px 8px;touch-action:none}
-#heroTop{font-size:12px;color:var(--mut);display:flex;flex-direction:column;align-items:flex-start;gap:2px}   /* always two lines: no layout jump when the stop changes */
-#heroStop{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#heroMain{display:flex;align-items:baseline;gap:10px;margin-top:2px}
-#heroMin{font-size:34px;font-weight:800;line-height:1}
-#heroTxt{font-size:14px;min-width:0}
-#heroNext{font-size:12px;color:var(--mut);margin-top:3px;min-height:1.4em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#hero{padding:4px 16px 8px;touch-action:none;display:flex;flex-direction:column}
+#heroMain{order:0}#heroTop{order:1}#heroNext{order:2}
+#heroTop{font-size:13px;color:var(--mut);margin:4px 0 0 24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* one quiet line: live status · time · next buses */
+
+#heroMain{display:flex;align-items:baseline;gap:10px;margin-top:2px;min-width:0}
+#heroDot{width:14px;height:14px;border-radius:50%;background:#ffcf33;box-shadow:0 0 0 2.5px #222;flex:none;align-self:center}
+#heroDot.to{background:#64b5f6;box-shadow:0 0 0 2.5px #0d47a1}#heroDot.off{display:none}
+#heroMin{font-size:40px;font-weight:800;line-height:1;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+#heroTxt{font-size:19px;font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#heroTxt.msg{font-size:14px;font-weight:400;white-space:normal;color:var(--mut)}
+#heroNext{font-size:14px;margin-top:6px;min-height:1.4em}
+#heroNext>div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#heroNext .missed{color:#b45309;margin-left:24px;font-size:13px}
+#heroNext .at{display:flex;align-items:center;gap:10px}
+#heroNext .at i{width:11px;height:11px;margin:0 1.5px;border-radius:50%;background:#64b5f6;box-shadow:0 0 0 2px #0d47a1;flex:none}
 #panes{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:0 12px 24px}
 .sech{font-size:13px;font-weight:700;color:var(--mut);margin:10px 4px 2px;cursor:pointer}
 #allStops{margin-top:8px}#allStops>summary{list-style-position:inside}
@@ -124,7 +132,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 #sheet.glide #strip,#sheet.glide #stripIn{transition:none}
 #sheet.glide .slab,#sheet.glide .sdest,#sheet.glide .sgap,#sheet.glide .sbus{opacity:var(--labA,1)!important;transition:none}
 #sheet.peek .sfix{transform:scale(1.6)}
-#sheet.peek #heroMin{font-size:24px}
+#sheet.peek #heroMin{font-size:26px}#sheet.peek #heroTxt{font-size:16px}
 #sheet.peek #hero{padding-bottom:4px}
 
 #status{font-size:12px;color:var(--mut);padding:2px 4px 6px}
@@ -198,7 +206,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 /* freshness pill */
 .pill{display:inline-block;border-radius:999px;padding:0 7px;font-weight:600;font-size:11px;line-height:17px;color:#fff;background:var(--old)}
 .pill.ok{background:var(--live)}.pill.warn{background:var(--warn)}.pill.bad{background:var(--late)}
-#heroAge{white-space:nowrap}#heroAge .ver{opacity:.7}
+#heroAge .dot{color:var(--old)}#heroAge .dot.ok{color:var(--live)}#heroAge .dot.warn{color:var(--warn)}#heroAge .dot.bad{color:var(--late)}
 /* first-run hint: stations pulse until a stop is chosen */
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(21,101,192,.55)}50%{box-shadow:0 0 0 5px rgba(21,101,192,0)}}
 #strip.pick .sd{animation:pulse 1.6s ease-in-out infinite}
@@ -249,8 +257,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
   <div id="grab" role="button" aria-label="Resize panel"><i></i></div>
   <div id="strip" aria-label="Line diagram: tap a station to make it your stop"><div id="stripIn"></div></div>
   <div id="hero">
-    <div id="heroTop"><span id="heroStop">My stop: tap a station</span><span id="heroAge"></span></div>
-    <div id="heroMain"><div id="heroMin">–</div><div id="heroTxt" class="mut">Loading…</div></div>
+    <div id="heroTop"><span id="heroAge"></span><span id="heroStop"></span></div>
+    <div id="heroMain"><i id="heroDot" class="off"></i><div id="heroMin">–</div><div id="heroTxt" class="msg">Loading…</div></div>
     <div id="heroNext"></div>
   </div>
   <div id="panes">
@@ -289,7 +297,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v158"; window.__appStarted=true;
+const VERSION="v159"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1479,50 +1487,44 @@ function renderFresh(){
     const t=fb&&!fb.stale?tms(fb.r):act.length?Math.max(...act.map(b=>tms(b.r))):null;
     if(t==null) txt="no buses on the road";
     else{ const a=Math.max(0,(Date.now()-t)/1000), ag=a<60?`${Math.round(a)} s`:`${Math.round(a/60)} min`;
-      cls=a<=150?"ok":a<=STALE_MIN*60?"warn":"bad"; txt=(cls==="ok"?"live · ":"position ")+ag+" old"; } }
-  el.innerHTML=`<span class="pill ${cls}">● ${txt}</span> <span class="ver">${VERSION}${lastRun?` · updated ${hm(lastRun)}`:""}</span>`;
+      cls=a<=150?"ok":a<=STALE_MIN*60?"warn":"bad"; txt=(cls==="ok"?"Live · seen ":"Last seen ")+ag+" ago"; } }
+  el.innerHTML=`<span class="dot ${cls}">●</span> ${txt}`;
 }
 function renderHero(model){
-  const s=myStop();
-  const ts=toStop();
-  $("heroStop").innerHTML=s?`My stop: <span class="rtl"><b>${esc(s.name)}</b></span>${ts?` → <span class="rtl"><b>${esc(ts.name)}</b></span>`:""}`:"👆 <b>Tap your station</b> on the line above";
+  // headline: "● 3 min to <stop>"; quiet line: live status · time · next buses; then a recently-passed note and the
+  // getting-off stop. The coloured dot matches the stop on the strip (yellow = boarding, blue = getting off).
+  const s=myStop(), ts=toStop(), dot=$("heroDot"), sn=x=>`<span class="rtl">${esc(shortName(x.name))}</span>`;
+  const set=(min,txt,line,next,d)=>{ $("heroMin").textContent=min; const tx=$("heroTxt"); tx.innerHTML=txt.html; tx.classList.toggle("msg",!!txt.msg);
+    $("heroStop").innerHTML=line?` · ${line}`:""; $("heroNext").innerHTML=next||""; dot.className=d==null?"off":d; };
+  const at=(x,t)=>`<div class="at"><i></i><span>At ${sn(x)} <b>~${hm(t)}</b></span></div>`;
   const sb=SEL_BUS&&model.find(b=>b.ref===SEL_BUS);
   if(sb&&(s||ts)){   // a bus is selected: every number is about it; "--" once it has passed
-    const bus=`<b>${esc(title.num)}${sb.start!=null?" "+hm(sb.start):""}</b>`, mins=t=>waitTxt(t);
+    const bus=`<b>${esc(title.num)}${sb.start!=null?" "+hm(sb.start):""}</b>`;
     const aF=selAt(sb,s), aT=selAt(sb,ts);
-    if(s&&aF&&aF!=="passed"){
-      $("heroMin").textContent=mins(aF.t);
-      $("heroTxt").innerHTML=`${bus} reaches <span class="rtl">${esc(shortName(s.name))}</span> ~${hm(aF.t)}`;
-      $("heroNext").innerHTML=aT&&aT!=="passed"?`→ <span class="rtl">${esc(shortName(ts.name))}</span> ~<b>${hm(aT.t)}</b>`:""; return; }
-    if(ts&&aT&&aT!=="passed"){
-      $("heroMin").textContent=mins(aT.t);
-      $("heroTxt").innerHTML=`${bus} arriving at <span class="rtl"><b>${esc(shortName(ts.name))}</b></span> ~${hm(aT.t)}`;
-      $("heroNext").innerHTML=""; return; }
-    if(aF==="passed"&&(!ts||aT==="passed")){
-      $("heroMin").textContent="--";
-      $("heroTxt").innerHTML=`${bus} passed <span class="rtl">${esc(shortName((ts||s).name))}</span>`;
-      $("heroNext").innerHTML=""; return; }
+    if(s&&aF&&aF!=="passed") return set(waitTxt(aF.t),{html:`to ${sn(s)}`},`${bus} · ${hm(aF.t)}`,aT&&aT!=="passed"?at(ts,aT.t):"","on");
+    if(ts&&aT&&aT!=="passed") return set(waitTxt(aT.t),{html:`to ${sn(ts)}`},`${bus} · ${hm(aT.t)}`,"","to");
+    if(aF==="passed"&&(!ts||aT==="passed")) return set("--",{html:`${bus} passed ${sn(ts||s)}`,msg:1},"","","off");
   }
-  if(!s){$("heroMin").textContent="–";$("heroTxt").textContent="";$("heroNext").textContent="";return;}
+  if(!s) return set("–",{html:"👆 <b>Tap your station</b> on the line above",msg:1},"","","off");
   const p=myStopPredictions(model);
   if(!p.length){ const loading=(refreshErr||!rides.length)&&!lastModel.length;
-    $("heroMin").textContent="–"; $("heroTxt").innerHTML=LINE_FAIL&&!rides.length?`Timetable server not responding. Retrying…`:loading?`Loading…`:`No more ${esc(title.num)} buses today.${(t=>t?" "+t+".":"")(nextServiceText())}`;
-    $("heroNext").innerHTML=loading?"":nextServiceText(); return; }   // (no "missed" note: nothing else to compare)
-  const m=Math.max(0,Math.round((p[0].t-Date.now())/60000));
-  $("heroMin").textContent=waitTxt(p[0].t);
+    return set("–",{html:LINE_FAIL&&!rides.length?`Timetable server not responding. Retrying…`:loading?`Loading…`:`No more ${esc(title.num)} buses today at ${sn(s)}.`,msg:1},"",
+      loading?"":`<div>${nextServiceText()}</div>`,"off"); }
+  const far=NEXT_DAY&&p[0].t>Date.now()+12*3600000;
   const nb0=p[0].ref&&model.find(b=>b.ref===p[0].ref);
-  $("heroTxt").innerHTML=(NEXT_DAY?`No service today · `:"")+`Next <b>${esc(title.num)}</b> at ${NEXT_DAY&&p[0].t>Date.now()+12*3600000?NEXT_DAY+" ":""}${hm(p[0].t)}${p[0].src==="tt"?` <span class="mut">(scheduled)</span>`:""}${altTxt(nb0,s,p[0])}`;
+  const line=[(NEXT_DAY?"No service today · ":"")+(far?NEXT_DAY+" ":"")+hm(p[0].t)+(p[0].src==="tt"?" scheduled":"")+altTxt(nb0,s,p[0]),
+              p.slice(1,3).length?"then "+p.slice(1,3).map(x=>hm(x.t)).join(", "):""].filter(Boolean).join(" · ");
+  // a bus that passed my stop in the last 10 minutes
   const ps=passedMyStop(), g=[...ps].reverse().find(x=>!x.before), gb=ps[ps.length-1], ago=g?Math.round((Date.now()-g.t)/60000):null;
-  const missed=g&&ago<=20?`<span class="${ago<=5?"d-early":""}">${ago<=5?"Just missed one":"Last one"}: passed ${ago<=1?"a minute":ago+" min"} ago</span>`
-              :gb&&gb.before&&Date.now()-gb.t<=20*60000?`One passed before ${hm(gb.t)}`:"";
-  const then=p.slice(1,3).length?"Then: "+p.slice(1,3).map(x=>hm(x.t)).join(", "):"";
-  // estimated arrival at To for the next bus: live methods if it has a position, else the timetable gap
+  const missed=g&&ago<=10?`${ago<=5?"Just missed one":"One"} · passed ${ago<=1?"a minute":ago+" min"} ago`
+              :gb&&gb.before&&Date.now()-gb.t<=10*60000?`One passed before ${hm(gb.t)}`:"";
+  // estimated arrival at the getting-off stop for the next bus: live methods if it has a position, else the timetable gap
   let arr="";
   if(ts&&ts.along>s.along){ const nb=p[0].ref&&model.find(b=>b.ref===p[0].ref); let ta=null;
     if(nb&&!nb.stale){ ta=ourPred(nb,ts); if(ta==null){ const mp=methodPreds(nb,ts), mk=methodRank().find(k=>mp[k]!=null); if(mk) ta=mp[mk]; } }
     if(ta==null&&Number.isFinite(ts.off)&&Number.isFinite(s.off)) ta=p[0].t+(ts.off-s.off)*1000;
-    if(ta!=null) arr=`→ <span class="rtl">${esc(shortName(ts.name))}</span> ~<b>${hm(ta)}</b>`; }
-  $("heroNext").innerHTML=[arr,missed,then].filter(Boolean).join(" · ");
+    if(ta!=null) arr=at(ts,ta); }
+  set(far?`${NEXT_DAY} ${hm(p[0].t)}`:waitTxt(p[0].t),{html:`to ${sn(s)}`},line,(missed?`<div class="missed">${missed}</div>`:"")+arr,"on");
 }
 // route as one right-to-left Hebrew phrase: origin ← destination (destination emphasised, no English in between)
 // one weight for both names: <b> inside the 600-weight chip became 900, which Segoe UI lacks for Hebrew, so a fallback font was used
@@ -1578,6 +1580,7 @@ function render(){
   st.innerHTML=active.length?`${active.length} bus${active.length===1?"":"es"} on the road · positions from ${hm(Math.max(...active.map(b=>tms(b.r))))}${lv?` · ${lv}`:""}`
                             :`No ${esc(title.num)} buses on the road right now`;   // details in ⚙︎ debug log
   if(ttShift) st.innerHTML+=` · <span title="Today's timetable isn't published yet">timetable from ${esc(ttDate)}</span>`;
+  st.innerHTML+=` · ${VERSION}${lastRun?` · updated ${hm(lastRun)}`:""}`;
 }
 
 // ---------- subway-style strip: one line, stations spaced by sqrt(planned minutes) ----------
