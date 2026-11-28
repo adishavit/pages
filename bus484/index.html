@@ -316,7 +316,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v171"; window.__appStarted=true;
+const VERSION="v172"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1988,10 +1988,13 @@ function tickStrip(){ if(document.hidden||!stripX0) return;
 function stackTags(){
   const host=$("stripIn"), W=host?host.clientWidth:0; if(!W) return;
   for(const sel of [".sbus:not(.lo)",".sbus.lo"]){   // each bar of a racetrack stacks its own tags
-    const tags=[...host.querySelectorAll(sel)].map(e=>({e,c:parseFloat(e.style.left)/100*W,w:e.offsetWidth||60})).sort((a,b)=>a.c-b.c);
+    // horizontal extent from the CSS anchoring (not the live rect: tags glide): centred, except the hollow "dep" tags, which hang right/left of the first station
+    const ext=e=>{ const c=parseFloat(e.style.left)/100*W, w=e.offsetWidth||60;
+      return e.classList.contains("upL")?[c-7,c-7+w]:e.classList.contains("upR")?[c+7-w,c+7]:[c-w/2,c+w/2]; };
+    const tags=[...host.querySelectorAll(sel)].map(e=>{ const [l,r]=ext(e); return {e,c:parseFloat(e.style.left)/100*W,l,r}; }).sort((a,b)=>a.l-b.l);
     const end=[-1e9,-1e9];
-    for(const t of tags){ const l=t.c-t.w/2, row=l>=end[0]+4?0:(l>=end[1]+4?1:(end[0]<=end[1]?0:1));
-      end[row]=t.c+t.w/2; t.e.classList.toggle("r2",row===1);
+    for(const t of tags){ const l=t.l, row=l>=end[0]+4?0:(l>=end[1]+4?1:(end[0]<=end[1]?0:1));
+      end[row]=t.r; t.e.classList.toggle("r2",row===1);
       if(LOOPK>=0&&LG){ const y=+t.e.dataset.y||LG.yT, lo=t.e.classList.contains("lo"), top=lo?LG.yT+2*LG.r+72+row*16:22-row*18;
         t.e.style.top=top+"px"; t.e.style.setProperty("--ph",Math.max(4,lo?top-y:y-top-14)+"px"); } } }
   // the destination label gives way to the "~N min left" label

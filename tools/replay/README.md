@@ -17,8 +17,8 @@ Traffic model vs the bare timetable (MAE minutes by minutes ahead; "tt-pace" = t
   14: 0-5 min 0.9-1.1, 20-30 min 3.0, 45-60 min 6.4-6.5. 19: 1.0-1.3 / 3.5-4.1 / 6.8-7.0.
 - Bias differs by line and sign (14: -2..-6 min at long range; 19: +0.5..+2), so a single global correction does not work.
   A flat +4-5% on predicted time >10 min gains ~3% overall (~20% at 45-60 min only).
-- The bare per-trip schedule is 10-14 min off on 19 and 484 even at short range (unverified: real lateness or a matching problem; check ttfetch.py
-  against ride/stop ids for these lines before trusting it as a baseline). Fine on 14.
+- The bare per-trip schedule is real-late, not a matching bug (checked): about -1..-2 min at km 0-2 on 19/484, growing with distance (19: -9 at 10 km, -24 at 16 km) and by hour
+  (fine at 05-06h and at night, -17..-29 min at midday). Line 14 shows the same (per-trip median -10 min at short horizons). The timetable is a poor midday baseline on all of them.
 
 Tried and dropped:
 - DWELL_MEASURED=1 (add the stop dwell at measured stops): worse at every horizon up to 45 min (bias goes from -2..-6 to +2..+5). Not the missing piece.
