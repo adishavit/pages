@@ -191,6 +191,8 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 #dbg{font:11px/1.35 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;background:var(--card);padding:6px;border-radius:8px;max-height:50vh;overflow:auto}
 /* map markers */
 .bm{position:absolute;transform:translate(-50%,-50%);background:var(--str);color:#fff;border:2px solid #fff;border-radius:12px;padding:1px 6px 2px;font:700 13px/15px BusUI,system-ui,sans-serif;text-align:center;box-shadow:0 1px 5px rgba(0,0,0,.5);white-space:nowrap}
+.bm.row,.bm.col{display:flex;align-items:center;gap:4px;padding:2px 7px 2px 5px}.bm.col{flex-direction:column;gap:1px;padding:3px 6px 2px;line-height:13px;border-radius:10px}
+.bm .fb{width:11px;height:15px;flex:none}.bm.col .fb{width:12px}.bm.row small,.bm.col small{display:inline;margin:0}
 .bm small{display:block;font-size:10px;font-weight:400;line-height:11px;opacity:.85}
 .bm.live{background:var(--live)}.bm.old{background:var(--old)}
 .bm.est{background:#fff;color:var(--str);border:2px dashed var(--str)}
@@ -316,7 +318,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v173"; window.__appStarted=true;
+const VERSION="v174"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -587,10 +589,10 @@ function estAlongNow(e){ const age=Math.max(0,(Date.now()-goTime(e.along,e.fixT,
   return haveTraffic()?advance(e.along,age):Math.min(routeLen(),e.along+e.sp*age); }   // congestion-aware when bus speeds exist
 function tickEst(jump){
   if(!HAVE_MAP||document.hidden) return;
-  for(const[,e]of estMarkers){
-    const a=estAlongNow(e), show=a-e.along>50;
-    e.m.setOpacity(show?1:0);
-    if(show){ const p=pointAt(a); jump?e.m.setLatLng(p):animate(e,p,1000,true); }   // glide 1 s per step, constant speed
+  for(const[,e]of busMarkers){ if(e.along==null) continue;
+    let p=e.fix;
+    if(!e.stale){ const a=estAlongNow(e); if(a-e.along>50) p=pointAt(a); }   // moved on since the report: on the road at the estimate; else at the report itself
+    if(p) jump?e.m.setLatLng(p):animate(e,p,1000,true);   // 1-s steps at constant speed
   }
 }
 setInterval(()=>tickEst(false),1000);
@@ -1382,7 +1384,9 @@ function myStopPredictions(model){
 function goneBus(b){ if(b.ref===SEL_BUS) return false; const t=toStop(), f=myStop(), lim=t||f; return !!lim&&b.along>lim.along+30; }
 function busIcon(b,est){
   const cls=(est?"est":b.stale?"old":b.live?"live":"")+(goneBus(b)?" gone":"");
-  return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${cls}${SEL_BUS===b.ref?" sel":""}">${busTagHtml(b,est)}</div>`});
+  // roomy map (zoomed in): front-view bus + minutes + time on one row; otherwise a narrow column with the minutes only
+  const g=busTag(b), roomy=!map||map.getZoom()>=14.5, bus='<svg class="fb" viewBox="0 0 12 16" aria-hidden="true"><rect x="1" y="1" width="10" height="12" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="2.8" y="3" width="6.4" height="4" rx=".8" fill="currentColor"/><circle cx="3.6" cy="10.4" r="1" fill="currentColor"/><circle cx="8.4" cy="10.4" r="1" fill="currentColor"/><path d="M3 13.2v1.8M9 13.2v1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  return L.divIcon({className:"",iconSize:[0,0],html:`<div class="bm ${roomy?"row":"col"} ${cls}${SEL_BUS===b.ref?" sel":""}">${bus}<span>${esc(g.big)}</span>${roomy&&g.small?`<small>${esc(g.small)}</small>`:""}</div>`});
 }
 const REDUCE=window.matchMedia?matchMedia("(prefers-reduced-motion: reduce)"):{matches:false};   // phone setting: no gliding, rolling or pulsing
 function animate(entry,to,D=1200,linear=false){   // linear: the 1-s steps of the estimated position must chain at constant speed (eased steps stop and start every second)
@@ -1411,23 +1415,19 @@ function renderMap(model){
   const keep=new Set();
   for(const b of model){
     keep.add(b.ref);
+    // ONE marker per bus: where it is estimated to be now (the last report only when the bus is selected, below)
     let e=busMarkers.get(b.ref);
     if(!e){ const ref=b.ref; e={m:new SmoothMarker([b.r.lat,b.r.lon],{icon:busIcon(b),zIndexOffset:1000}).addTo(map)};busMarkers.set(b.ref,e);
       e.m.on("click",ev=>{ L.DomEvent.stopPropagation(ev); selectBus(ref); }); }
-    else{e.m.setIcon(busIcon(b)); animate(e,[b.r.lat,b.r.lon]);}
-    e.m.bindTooltip(`${esc(title.num)} ${b.start!=null?hm(b.start)+" dep. · ":""}${b.live?"live":"recent"} position ${hms(tms(b.r))}`);
-    // estimated-position marker: persistent, moved every second by tickEst()
-    let es=estMarkers.get(b.ref);
-    if(b.stale){ if(es){es.m.remove();estMarkers.delete(b.ref);} }
-    else{
-      if(!es){ const ref=b.ref; es={m:new SmoothMarker(pointAt(b.estAlong),{icon:busIcon(b,true),opacity:0}).bindTooltip("Estimated position now").addTo(estLayer)}; estMarkers.set(b.ref,es);
-        es.m.on("click",ev=>{ L.DomEvent.stopPropagation(ev); selectBus(ref); }); }
-      else es.m.setIcon(busIcon(b,true));
-      Object.assign(es,{along:b.along,fixT:tms(b.r),sp:b.sp,start:b.start});
-    }
+    else e.m.setIcon(busIcon(b));
+    Object.assign(e,{along:b.along,fixT:tms(b.r),sp:b.sp,start:b.start,stale:b.stale,fix:[b.r.lat,b.r.lon]});
+    e.m.bindTooltip(`${esc(title.num)} ${b.start!=null?hm(b.start)+" dep. · ":""}estimated position now · last report ${hms(tms(b.r))} (${b.live?"live":"recent"})`);
   }
   for(const[ref,e]of busMarkers) if(!keep.has(ref)){e.m.remove();busMarkers.delete(ref);}
-  for(const[ref,e]of estMarkers) if(!keep.has(ref)){e.m.remove();estMarkers.delete(ref);}
+  estLayer.clearLayers();   // the selected bus also shows where it was last reported, and how long ago
+  { const sb=SEL_BUS&&model.find(b=>b.ref===SEL_BUS);
+    if(sb){ const ag=Math.max(0,Math.round((Date.now()-tms(sb.r))/60000));
+      L.circleMarker([sb.r.lat,sb.r.lon],{radius:4,weight:2,color:"#fff",fillColor:"#283593",fillOpacity:.7,opacity:1,interactive:true}).bindTooltip(`Last reported ${ag<1?"under a minute":ag+" min"} ago`).addTo(estLayer); } }
   tickEst(true);
 }
 function renderDiagram(model,preds){
@@ -2173,6 +2173,7 @@ function lensMapEnd(){
   // the map stays where the lens took it (no jump back): let a glide in progress finish, then snap to quarter zooms again
   if(!lensMapTgt) map.options.zoomSnap=.25; else lensMapBack=true;
   lensMapSaved=null; }
+if(HAVE_MAP) map.on("zoomend",()=>{ if(lastModel) for(const b of lastModel){ const e=busMarkers.get(b.ref); if(e) e.m.setIcon(busIcon(b)); } });   // roomy / narrow tag follows the zoom
 if(HAVE_MAP) map.on("dragstart zoomstart",()=>{ if(lensMapSaved&&!lensMapProg){ lensMapUser=true; lensMapTgt=null; map.options.zoomSnap=.25; } });
 function stationAt(cx,cy,filter){ const r=$("stripIn").getBoundingClientRect(), fx=cx-r.left, fy=cy-r.top; let bi=-1,bd=Infinity;
   stops.forEach((st,i)=>{ if(filter&&!filter(i)) return; let d;
