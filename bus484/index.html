@@ -318,7 +318,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v174"; window.__appStarted=true;
+const VERSION="v175"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -549,7 +549,8 @@ const STYLES={
   voyagerlite:{name:"Google-like, quieter labels (CARTO Voyager)", carto:"rastertiles/voyager_labels_under", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
   positron: {name:"Clean light (CARTO Positron)", carto:"rastertiles/light_all", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
   dark:     {name:"Clean dark (CARTO Dark Matter)", carto:"rastertiles/dark_all", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
-  soft:     {name:"Soft (Voyager, muted colours)", carto:"rastertiles/voyager", filter:"saturate(.35) contrast(.92) brightness(1.05)", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
+  soft:     {name:"Google-like, muted 65% (Voyager)", carto:"rastertiles/voyager", filter:"saturate(.65) contrast(.96) brightness(1.03)", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
+  soft2:    {name:"Google-like, muted 80% (Voyager)", carto:"rastertiles/voyager", filter:"saturate(.8) contrast(.98) brightness(1.02)", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
   focus:    {name:"Route focus (light, no labels)", carto:"rastertiles/light_nolabels", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
   esrigray: {name:"Light gray (Esri)", url:"https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", attr:"Tiles © Esri — Esri, DeLorme, NAVTEQ", max:16},
   darkfocus:{name:"Dark, no labels (CARTO)", carto:"rastertiles/dark_nolabels", attr:OSM_ATTR+' © <a href="https://carto.com/attribution">CARTO</a>', max:20},
