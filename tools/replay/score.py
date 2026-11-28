@@ -17,7 +17,9 @@ def agg(xs):
 summary = {}
 for f in sorted(glob.glob("out/*.jsonl")):
     line = f.split("/")[-1][:-6]
-    R = [json.loads(l) for l in open(f)]
+    R0 = [json.loads(l) for l in open(f)]
+    R = [r for r in R0 if not r.get("atStart")]     # en route; predictions while still at the first stop scored apart
+    S0 = agg([r["err"] for r in R0 if r.get("atStart") and 5 <= r["h"] < 30])
     if not R: continue
     trips = len({(r["day"], r["trip"]) for r in R})
     S = {"predictions": len(R), "trips": trips, "days": sorted({r["day"] for r in R})}
@@ -48,8 +50,9 @@ for f in sorted(glob.glob("out/*.jsonl")):
     for r in R:
         if 5 <= r["h"] < 30: bm["measured" if r["measured"] else "timetable only"].append(r["err"])
     S["byCoverage"] = {k: agg(v) for k, v in bm.items()}
+    S["atStart_5to30"] = S0
     summary[line] = S
-    print(f"\n== line {line}: {len(R)} predictions, {trips} trips, days {S['days'][0]}..{S['days'][-1]}")
+    print(f"\n== line {line}: {len(R)} en-route predictions, {trips} trips, days {S['days'][0]}..{S['days'][-1]}; still at first stop (5-30 min ahead): {S0}")
     print(f"{'ahead':>8} {'n':>6} | {'model MAE':>9} {'bias':>6} {'p90':>5} | {'plan MAE':>8} {'bias':>6} | {'sched MAE':>9} {'bias':>6}")
     for b, v in S["byHorizon"].items():
         m, p, s = v["model"], v["plan"], v.get("sched")

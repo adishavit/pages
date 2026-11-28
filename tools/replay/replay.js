@@ -94,11 +94,15 @@ function loadDay(day,keep){   // only rows that pass keep(), parsed line by line
           const P=prof; prof=null; const plan=__q.map(x=>travelTime(__a0,x).t); prof=P;
           return JSON.stringify({m,plan,cov}); })()`));
         const hourIL=(new Date(T).getUTCHours()+2)%24;
+        // when the bus sets off: the app's goTime rule (still within 300 m of the start: waits for its departure time,
+        // or leaves now if it's late but still reporting there)
+        const atStart=me._a<300, s0=tripStart||me._t;
+        const go=!atStart?me._t:T<s0?s0:(T-me._t<3*60e3?T:Math.max(me._t,s0));
         ahead.forEach((o,i)=>{
           const sched=o.tg.stop&&tripStart?tripStart+o.tg.off*1000:null;
           out.write(JSON.stringify({line:LINE,day,trip:k,T,hour:hourIL,from:Math.round(me._a),to:Math.round(o.tg.along),stop:o.tg.stop,
             h:+((o.tr-T)/60e3).toFixed(2),age:Math.round((T-me._t)/1e3),
-            err:+((me._t+res.m[i]*1000-o.tr)/60e3).toFixed(3),errPlan:+((me._t+res.plan[i]*1000-o.tr)/60e3).toFixed(3),
+            atStart,err:+((go+res.m[i]*1000-o.tr)/60e3).toFixed(3),errPlan:+((go+res.plan[i]*1000-o.tr)/60e3).toFixed(3),
             errSched:sched!=null?+((sched-o.tr)/60e3).toFixed(3):null,measured:res.cov[i]})+"\n"); nPred++; np++;
         }); nm++;
       }
