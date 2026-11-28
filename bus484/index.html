@@ -316,7 +316,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v167"; window.__appStarted=true;
+const VERSION="v168"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -1005,7 +1005,7 @@ function probePairs(rows){
     const v=String(r.siri_ride__vehicle_ref??r.siri_ride__id??"");if(!v)continue;const key=v+"|"+t;if(seen.has(key))continue;seen.add(key);
     if(!byV.has(v))byV.set(v,[]);byV.get(v).push({t,lat:r.lat,lon:r.lon,brg:r.bearing,ds:r.distance_from_siri_ride_stop_meters});}
   const out=[]; let veh=0, dwellPairs=0;
-  for(let[,arr]of byV){
+  for(let[vid,arr]of byV){
     arr.sort((x,y)=>x.t-y.t); let used=false;
     { const bad=new Array(arr.length).fill(false);           // laid over / parked: drop the whole standing run
       for(let i=0;i<arr.length;i++){ let j=i; while(j+1<arr.length&&dist(arr[i].lat,arr[i].lon,arr[j+1].lat,arr[j+1].lon)<PARK_M) j++;
@@ -1023,7 +1023,7 @@ function probePairs(rows){
       const moved=dist(p.lat,p.lon,q.lat,q.lon);
       if(moved<30&&Number.isFinite(q.brg)&&q.brg>0&&angDiff(q.brg,routeBearing(q.a))>60) continue;
       if(moved<25&&(atStopPoint(p)||atStopPoint(q))){dwellPairs++;continue;}   // standing at a stop: dwell, not traffic
-      out.push({a0:p.a,a1:Math.max(p.a,q.a),t0:p.t,t1:q.t}); used=true;
+      out.push({a0:p.a,a1:Math.max(p.a,q.a),t0:p.t,t1:q.t,v:vid}); used=true;
     }
     if(used) veh++;
   }
@@ -1070,12 +1070,18 @@ function profilePass(prev){
     pace[k]=Math.min(2,Math.max(1/35,w*pc+(1-w)*pf));
     conf[k]=Math.max(Df,Dc)/(Math.max(Df,Dc)+P);
   }
-  return {C,n,pace,conf,plan,tRef,obs:pairs.length,veh,dwellPairs};
+  // distinct buses behind each cell (within 200 m): a jam needs several, one bus is not traffic
+  const nvS=Array.from({length:n},()=>new Set());
+  for(const o of pairs){ const k0=Math.max(0,Math.floor(o.a0/C)-2), k1=Math.min(n-1,Math.floor(o.a1/C)+2); for(let k=k0;k<=k1;k++) nvS[k].add(o.v); }
+  const nv=Int16Array.from(nvS,x=>x.size);
+  return {C,n,pace,conf,plan,nv,tRef,obs:pairs.length,veh,dwellPairs};
 }
 const haveTraffic=()=>!!prof&&prof.conf.some(c=>c>=ASM.minConf);
+const MIN_JAM_BUSES=3, PLAN_V_MAX=40/3.6;
 function cellLevel(k){ // 0 green, 1 orange, 2 red, null = not enough data
   if(!prof||prof.conf[k]<ASM.minConf) return null;
-  const r=prof.plan[k]/prof.pace[k];   // speed / planned speed
+  if(prof.nv&&prof.nv[k]<MIN_JAM_BUSES) return null;   // too few buses to say anything about traffic
+  const r=Math.min(1/prof.pace[k],PLAN_V_MAX)/Math.min(1/prof.plan[k],PLAN_V_MAX);   // speed / planned speed; planned speed capped (timetable gaps can imply 100+ km/h in a city)
   return r>=0.85?0:r>=0.55?1:2;
 }
 const LEVEL_COLOR=["#2e7d32","#f29900","#c62828"];
@@ -1155,7 +1161,7 @@ async function fetchProbes(){
   const t0=performance.now(); buildProfile(); const ms=Math.round(performance.now()-t0);
   const cov=prof?Math.round(prof.conf.filter(c=>c>=ASM.minConf).length*prof.C/100)/10:0;
   probeState=haveTraffic()?"ok":"no data";
-  if(prof&&haveTraffic()) store("prof:"+REF,JSON.stringify({t:Date.now(),L:Math.round(routeLen()),p:{C:prof.C,n:prof.n,pace:[...prof.pace],conf:[...prof.conf],plan:[...prof.plan],tRef:prof.tRef,obs:prof.obs,veh:prof.veh,dwellPairs:prof.dwellPairs}}));
+  if(prof&&haveTraffic()) store("prof:"+REF,JSON.stringify({t:Date.now(),L:Math.round(routeLen()),p:{C:prof.C,n:prof.n,pace:[...prof.pace],nv:[...prof.nv],conf:[...prof.conf],plan:[...prof.plan],tRef:prof.tRef,obs:prof.obs,veh:prof.veh,dwellPairs:prof.dwellPairs}}));
   probeInfo=`${prof?prof.obs:0} running measurements from ${prof?prof.veh:0} buses (${prof?prof.dwellPairs:0} at-stop excluded, ${zoneAlong.length} stops on route) · ${cov} km of ${(routeLen()/1000).toFixed(1)} covered · ${all.length} positions · ${fails} failed${probeDirect?" · direct (old relay)":""} · model ${ms} ms`;
   log("probes: "+probeInfo); render();
 }

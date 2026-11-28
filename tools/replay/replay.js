@@ -57,8 +57,9 @@ function loadDay(day,keep){   // only rows that pass keep(), parsed line by line
     if(b-a>MIDGAP) targets.push({along:(a+b)/2,stop:false});
     targets.push({along:b,stop:true,off:st[i].off,code:st[i].code}); }
   process.stderr.write(`${LINE} ref ${REF}: route ${Math.round(L)} m, ${st.length} stops, ${targets.length} targets, ${B.length} boxes\n`);
-  const out=fs.createWriteStream(path.join(DATA,"out",`${LINE}.jsonl`),{flags:"a"});
-  w.__rows=[];
+  const out=fs.createWriteStream(path.join(DATA,"out",`${LINE}${process.env.TAG||""}.jsonl`),{flags:"a"});
+  w.__rows=[]; fs.mkdirSync(path.join(DATA,"snap"),{recursive:true});
+  const snap=fs.createWriteStream(path.join(DATA,"snap",`${LINE}${process.env.TAG||""}.jsonl`),{flags:"a"});
   for(const day of DAYS){
     const tl=Date.now(); const raw=loadDay(day,r=>inBox(r[5],r[6])); process.stderr.write(`${day}: loaded ${raw?raw.length:0} corridor rows in ${((Date.now()-tl)/1000).toFixed(0)} s\n`); if(!raw){ process.stderr.write(`${day}: no data\n`); continue; }
     // corridor rows as the app's Stride rows
@@ -69,6 +70,7 @@ function loadDay(day,keep){   // only rows that pass keep(), parsed line by line
     // our line's trips
     const trips=new Map(); for(const r of rows){ if(String(r._line)!==String(REF)) continue; const k=r.siri_ride__vehicle_ref+"|"+r._trip;
       (trips.get(k)||trips.set(k,[]).get(k)).push(r); }
+    const ttf=path.join(DATA,"tt",`${REF}-${day}.json`), TT=fs.existsSync(ttf)?JSON.parse(fs.readFileSync(ttf,"utf8")):null; if(!TT) process.stderr.write(`${day}: no timetable file ${ttf}: errSched left empty\n`);
     let nTrips=0, nPred=0;
     const MAXT=+(process.env.MAXTRIPS||1e9), keys=[...trips.keys()].sort((a,b)=>+a.split("|")[1]-+b.split("|")[1]), every=Math.max(1,Math.ceil(keys.length/MAXT));
     const pick=new Set(keys.filter((_,i)=>i%every===0));
@@ -94,14 +96,15 @@ function loadDay(day,keep){   // only rows that pass keep(), parsed line by line
         const res=JSON.parse(E(`(()=>{ probeRows=__probe; vehicles.clear(); buildProfile();
           const m=__q.map(x=>travelTime(__a0,x).t), cov=__q.map(x=>runTime(__a0,x).probe);
           const P=prof; prof=null; const plan=__q.map(x=>travelTime(__a0,x).t); prof=P;
-          return JSON.stringify({m,plan,cov}); })()`));
+          return JSON.stringify({m,plan,cov,p:prof.pace.map(x=>+x.toFixed(3)),q:prof.conf.map(c=>c>=ASM.minConf?1:0).join("")}); })()`));
+        snap.write(JSON.stringify({day,T,p:res.p,q:res.q})+"\n");   // the profile as it was at T (p = pace s/m per 100 m cell, q = 1 where measured): history for the forecast
         const hourIL=(new Date(T).getUTCHours()+2)%24;
         // when the bus sets off: the app's goTime rule (still within 300 m of the start: waits for its departure time,
         // or leaves now if it's late but still reporting there)
         const atStart=me._a<300, s0=tripStart||me._t;
         const go=!atStart?me._t:T<s0?s0:(T-me._t<3*60e3?T:Math.max(me._t,s0));
         ahead.forEach((o,i)=>{
-          const sched=o.tg.stop&&tripStart?tripStart+o.tg.off*1000:null;
+          const sched=o.tg.stop&&TT&&TT[tripStart]&&TT[tripStart][o.tg.code]!=null?TT[tripStart][o.tg.code]:null;   // the trip's own scheduled time (ttfetch.py); none = not scored
           out.write(JSON.stringify({line:LINE,day,trip:k,T,hour:hourIL,at:Math.round(targets[mo.i].along),from:Math.round(me._a),to:Math.round(o.tg.along),stop:o.tg.stop,
             h:+((o.tr-T)/60e3).toFixed(2),age:Math.round((T-me._t)/1e3),
             atStart,err:+((go+res.m[i]*1000-o.tr)/60e3).toFixed(3),errPlan:+((go+res.plan[i]*1000-o.tr)/60e3).toFixed(3),
@@ -112,5 +115,5 @@ function loadDay(day,keep){   // only rows that pass keep(), parsed line by line
     }
     process.stderr.write(`${day}: ${trips.size} trips seen, ${nTrips} scored, ${nPred} predictions\n`);
   }
-  out.end(); setTimeout(()=>process.exit(0),500);
+  out.end(); snap.end(); setTimeout(()=>process.exit(0),500);
 })().catch(e=>{ console.error(e); process.exit(1); });
