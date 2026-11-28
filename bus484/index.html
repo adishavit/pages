@@ -318,7 +318,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v179"; window.__appStarted=true;
+const VERSION="v180"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -564,7 +564,7 @@ function styleUrl(st){ return st.carto?`https://basemaps.cartocdn.com/${st.carto
 // Pluribus palette: our own vector style (colours below) drawn from OpenStreetMap data served as OpenMapTiles vector tiles by OpenFreeMap.
 // Neutral on purpose: no saturated red / orange / green, so the route, buses and the jam colours are the only strong colours on the map.
 const PLURIBUS={
-  light:{land:"#f4f2ee",resid:"#eeebe4",park:"#dde8d3",wood:"#d8e3cd",water:"#c9dcee",waterway:"#c0d5ea",bldg:"#e6e2d9",minor:"#ffffff",minorC:"#e2ded4",major:"#ffffff",majorC:"#cfc9bb",mway:"#fdf6e3",mwayC:"#d6c79f",path:"#d2cdc1",rail:"#b9b5ad",lab:"#4a4f57",halo:"#ffffff",place:"#2f3338",wlab:"#5b88b5"},
+  light:{land:"#f4f2ee",resid:"#eeebe4",park:"#dde8d3",wood:"#d8e3cd",water:"#c9dcee",waterway:"#c0d5ea",bldg:"#e6e2d9",minor:"#ffffff",minorC:"#e2ded4",major:"#ffffff",majorC:"#cfc9bb",trunk:"#fde8a6",trunkC:"#e3c777",mway:"#fbd673",mwayC:"#e0b04a",path:"#d2cdc1",rail:"#b9b5ad",lab:"#4a4f57",halo:"#ffffff",place:"#2f3338",wlab:"#5b88b5"},
   dark: {land:"#181a1f",resid:"#1c1e24",park:"#1d261f",wood:"#1b241e",water:"#11202e",waterway:"#16293a",bldg:"#23262c",minor:"#2b2e36",minorC:"#1e2026",major:"#363a44",majorC:"#20232a",mway:"#444956",mwayC:"#262932",path:"#3a3e47",rail:"#4a4e57",lab:"#9aa0aa",halo:"#181a1f",place:"#c5cad2",wlab:"#5d86ad"}};
 function pluribusStyle(mode){
   const P=PLURIBUS[mode], cls=l=>["in",["get","class"],["literal",l]], F=["Noto Sans Regular"], FB=["Noto Sans Bold"];
@@ -587,8 +587,8 @@ function pluribusStyle(mode){
       road("minor",["minor","service","busway"],P.minor,w(.6,2.2,7.5)),
       road("major-c",["secondary","tertiary"],P.majorC,w(1.4,4.2,12)),
       road("major",["secondary","tertiary"],P.major,w(1,3.2,10.5)),
-      road("trunk-c",["trunk","primary"],P.majorC,w(1.8,5,14)),
-      road("trunk",["trunk","primary"],P.major,w(1.3,3.9,12.5)),
+      road("trunk-c",["trunk","primary"],P.trunkC||P.majorC,w(1.8,5,14)),
+      road("trunk",["trunk","primary"],P.trunk||P.major,w(1.3,3.9,12.5)),
       road("mway-c",["motorway"],P.mwayC,w(2,5.6,16)),
       road("mway",["motorway"],P.mway,w(1.5,4.4,14)),
       {id:"rail",type:"line",source:"om","source-layer":"transportation",filter:cls(["rail","transit"]),paint:{"line-color":P.rail,"line-width":w(.5,1,2),"line-dasharray":[3,2]}},
