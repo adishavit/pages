@@ -316,7 +316,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v168"; window.__appStarted=true;
+const VERSION="v169"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -2194,6 +2194,7 @@ function stationAt(cx,cy,filter){ const r=$("stripIn").getBoundingClientRect(), 
       if(lensK>0) lensAnim=requestAnimationFrame(shrink); else el.classList.remove("lensing"); };
     lensAnim=requestAnimationFrame(shrink); lensMapEnd(); };
   let tagRef=null, dragSel=null;
+  const dragEta=()=>{ try{ lastModel=buildModel(); renderHero(lastModel); }catch(_){} };   // the headline (ETA) follows the dragged station while dragging, not only on release
   el.addEventListener("pointerdown",e=>{ clearTimeout(parkT); down=true; moved=false; lensOn=false; x0=lastX=e.clientX; y0=lastY=e.clientY;
     const tg=e.target.closest&&e.target.closest(".sbus"); tagRef=tg?tg.id.replace(/^sb-/,""):null;
     // press on (or within 18 px of) my From / To station: drag it along the line
@@ -2208,7 +2209,7 @@ function stationAt(cx,cy,filter){ const r=$("stripIn").getBoundingClientRect(), 
       const fi=stops.findIndex(x=>x.code===MY_STOP), ti=stops.findIndex(x=>x.code===TO_STOP);
       const ok=dragSel.kind==="from"?(i=>ti<0||i<ti):(i=>i>fi);
       const h=stationAt(e.clientX,e.clientY,ok); if(h.i>=0){ const c=stops[h.i].code;
-        if(dragSel.kind==="from"&&c!==MY_STOP){ MY_STOP=c; ask(); } else if(dragSel.kind==="to"&&c!==TO_STOP){ TO_STOP=c; ask(); } } } });
+        if(dragSel.kind==="from"&&c!==MY_STOP){ MY_STOP=c; ask(); dragEta(); } else if(dragSel.kind==="to"&&c!==TO_STOP){ TO_STOP=c; ask(); dragEta(); } } } });
   const release=e=>{ if(!down) return; down=false; clearTimeout(holdT); try{ el.releasePointerCapture(e.pointerId); }catch(_){}
     if(dragSel&&moved){ const d=dragSel; dragSel=null;   // commit the dragged station (or put it back on cancel)
       if(e.type!=="pointerup"){ if(d.kind==="from") MY_STOP=d.orig; else TO_STOP=d.orig; ask(); }
