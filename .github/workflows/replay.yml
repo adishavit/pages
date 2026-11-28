@@ -28,6 +28,11 @@ jobs:
           fi
           echo "days=$D" >> "$GITHUB_OUTPUT"; echo "days: $D"
           echo "daysjson=$(python3 -c "import json,sys;print(json.dumps(sys.argv[1:]))" $D)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4            # raw days are downloaded once and reused by later runs (fetchraw skips cached days)
+        with:
+          path: tools/replay/raw
+          key: raw-${{ hashFiles('tools/replay/fetchraw.py') }}-${{ steps.days.outputs.days }}
+          restore-keys: raw-${{ hashFiles('tools/replay/fetchraw.py') }}-
       - working-directory: tools/replay
         run: python3 fetchraw.py ${{ steps.days.outputs.days }}
       - uses: actions/upload-artifact@v4
