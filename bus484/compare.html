@@ -3,7 +3,7 @@
 <style>body{margin:0;font:14px system-ui,sans-serif;background:#fff}h2{margin:10px 8px 4px;font-size:15px}.row{display:flex;gap:6px;padding:0 6px 6px}.c{flex:1;min-width:0}.c b{display:block;font-size:12px;margin:2px 0}.m{height:46vh;min-height:300px;border-radius:8px;overflow:hidden}.hint{margin:6px 8px;color:#666;font-size:12px}@media(max-width:700px){.row{flex-direction:column}}</style>
 <div class="hint">Same view, panning and zooming are synced. Google Maps itself cannot be shown here (its tiles are only licensed inside Google's own products); CARTO Voyager is the closest Google-like open style.</div>
 <h2>Light</h2><div class="row" id="L"></div><h2>Dark</h2><div class="row" id="D"></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>try{maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true)}catch(_){}</script><script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.2/leaflet-maplibre-gl.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>try{maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js",true)}catch(_){}</script><script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.2/leaflet-maplibre-gl.js"></script>
 <script>
 const CARTO_KEY="cb1_5ffa_1_c34b73c1f350ef400374bf6f";   // CARTO basemaps key (free, non-commercial; public by nature: it is in every tile URL)
 const ct=n=>`https://basemaps.cartocdn.com/rastertiles/${n}/{z}/{x}/{y}.png?key=${CARTO_KEY}`;

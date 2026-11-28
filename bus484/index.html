@@ -318,7 +318,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v182"; window.__appStarted=true;
+const VERSION="v183"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -605,7 +605,7 @@ function ensureGL(){   // MapLibre GL (+ its Leaflet bridge) only when a vector 
   if(glPromise) return glPromise;
   const load=src=>new Promise((ok,no)=>{ const e=document.createElement("script"); e.src=src; e.onload=ok; e.onerror=()=>no(new Error("load "+src)); document.head.appendChild(e); });
   const css=document.createElement("link"); css.rel="stylesheet"; css.href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"; document.head.appendChild(css);
-  return glPromise=load("https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js").then(()=>{ try{ maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js",true); }catch(_){} })   // Hebrew / Arabic labels need the RTL text plugin (Safari drew them reversed without it)
+  return glPromise=load("https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js").then(()=>{ try{ maplibregl.setRTLTextPlugin("https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js",true); }catch(_){} })   // Hebrew / Arabic labels need the RTL text plugin (Safari drew them reversed without it)
       .then(()=>load("https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.2/leaflet-maplibre-gl.js")).catch(e=>{glPromise=null;throw e;});
 }
 function setMapStyle(id,initial){
