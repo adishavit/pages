@@ -19,7 +19,7 @@ const w=dom.window,d=w.document,t=id=>(d.getElementById(id)||{textContent:"(remo
 setTimeout(()=>{
   if(process.argv[3]==="nostop") w.eval("MY_STOP='';render()");
   console.log("no tabs:",!d.getElementById("tabs"));
-  console.log("pill:",t("heroAge"),"| class:",d.querySelector("#heroAge .dot").className);
+  console.log("age:",JSON.stringify(t("heroAge")),"| sig:",d.getElementById("heroSig").getAttribute("class"),"| at:",t("heroAt"));
   console.log("heroStop:",t("heroStop"));
   console.log("board:",t("board").slice(0,200));
   console.log("depsHd:",t("depsHd"),"| deps rows:",d.querySelectorAll("#deps tr").length);
