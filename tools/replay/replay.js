@@ -1,12 +1,12 @@
 // Every-station replay of the bus484 congestion model, using the app's own code (bus484/index.html) in jsdom.
-// For each trip of the line, every STEP seconds: rebuild the traffic profile from the positions published by then
+// For each trip of the line, as the bus passes each station (and the midpoint of long stretches): rebuild the traffic profile from the positions published by then
 // (raw feed, 1 min publishing delay), predict the bus's arrival at every later station (+ extra points on long gaps),
 // and compare with when it actually got there (interpolated between its own fixes). Writes out/<line>.jsonl
 // Usage: NODE_USE_ENV_PROXY=1 node replay.js <line> <ref> <day> [<day> ...]
 const {JSDOM}=require("jsdom"), fs=require("fs"), zlib=require("zlib"), path=require("path"), crypto=require("crypto");
 const [LINE,REF,...DAYS]=process.argv.slice(2);
 const APP=process.env.APP||path.join(__dirname,"../../bus484/index.html");
-const STEP=120e3, LAG=60e3, WIN=25*60e3, MAXGAP=180e3, EXTRA=1000, HORIZON=60*60e3;
+const LAG=60e3, WIN=25*60e3, MAXGAP=180e3, MIDGAP=3000, HORIZON=90*60e3;
 const DATA=process.env.DATA||__dirname, CACHE=path.join(DATA,"cache"); fs.mkdirSync(CACHE,{recursive:true}); fs.mkdirSync(path.join(DATA,"out"),{recursive:true});
 
 // ---------- boot the app with real network for timetable / stops / road shape, cached on disk ----------
@@ -50,10 +50,11 @@ function loadDay(day,keep){   // only rows that pass keep(), parsed line by line
   const L=E("routeLen()"), boxes=E("JSON.stringify(sections.map(s=>s.box))");
   const B=JSON.parse(boxes);
   const inBox=(la,lo)=>B.some(([a,b,c,d])=>la>=a&&la<=b&&lo>=c&&lo<=d);
-  // truth targets: every station after the first, plus a point every EXTRA m inside long gaps
+  // points: every station, plus the midpoint of any stretch longer than MIDGAP. Predictions are made as the bus passes
+  // each point (from what was published by then) for every later point.
   const st=JSON.parse(E("JSON.stringify(stops.map(s=>({code:s.code,along:s.along,off:s.off||0})))"));
-  const targets=[]; for(let i=1;i<st.length;i++){ const a=st[i-1].along,b=st[i].along;
-    for(let x=a+EXTRA;x<b-EXTRA/2;x+=EXTRA) targets.push({along:x,stop:false});
+  const targets=[{along:st[0].along,stop:true,off:st[0].off,code:st[0].code}]; for(let i=1;i<st.length;i++){ const a=st[i-1].along,b=st[i].along;
+    if(b-a>MIDGAP) targets.push({along:(a+b)/2,stop:false});
     targets.push({along:b,stop:true,off:st[i].off,code:st[i].code}); }
   process.stderr.write(`${LINE} ref ${REF}: route ${Math.round(L)} m, ${st.length} stops, ${targets.length} targets, ${B.length} boxes\n`);
   const out=fs.createWriteStream(path.join(DATA,"out",`${LINE}.jsonl`),{flags:"a"});
@@ -81,9 +82,10 @@ function loadDay(day,keep){   // only rows that pass keep(), parsed line by line
       const tEnd=Math.max(...truth.filter(x=>x!=null)); if(!Number.isFinite(tEnd)) continue;
       nTrips++;
       const tripStart=fx[0]._trip, t0=Date.now(); let nm=0, np=0;
-      for(let T=fx[0]._av+STEP;T<tEnd;T+=STEP){
+      const moments=truth.map((t,i)=>({t,i})).filter(o=>o.t!=null&&o.t<tEnd);
+      for(const mo of moments){ const T=mo.t;
         let me=null; for(const r of fx) if(r._av<=T) me=r; if(!me||T-me._t>5*60e3) continue;
-        const ahead=targets.map((tg,i)=>({tg,tr:truth[i]})).filter(o=>o.tr!=null&&o.tr>T&&o.tg.along>me._a+100&&o.tr-T<=HORIZON);
+        const ahead=targets.map((tg,i)=>({tg,tr:truth[i]})).filter((o,i)=>i>mo.i&&o.tr!=null&&o.tr>T&&o.tg.along>me._a+100&&o.tr-T<=HORIZON);
         if(!ahead.length) continue;
         // probes published by T, recorded in the last WIN (all lines, our corridor)
         let lo=0,hi=rows.length; while(lo<hi){const m=(lo+hi)>>1; if(rows[m]._av<=T) lo=m+1; else hi=m;}
@@ -100,7 +102,7 @@ function loadDay(day,keep){   // only rows that pass keep(), parsed line by line
         const go=!atStart?me._t:T<s0?s0:(T-me._t<3*60e3?T:Math.max(me._t,s0));
         ahead.forEach((o,i)=>{
           const sched=o.tg.stop&&tripStart?tripStart+o.tg.off*1000:null;
-          out.write(JSON.stringify({line:LINE,day,trip:k,T,hour:hourIL,from:Math.round(me._a),to:Math.round(o.tg.along),stop:o.tg.stop,
+          out.write(JSON.stringify({line:LINE,day,trip:k,T,hour:hourIL,at:Math.round(targets[mo.i].along),from:Math.round(me._a),to:Math.round(o.tg.along),stop:o.tg.stop,
             h:+((o.tr-T)/60e3).toFixed(2),age:Math.round((T-me._t)/1e3),
             atStart,err:+((go+res.m[i]*1000-o.tr)/60e3).toFixed(3),errPlan:+((go+res.plan[i]*1000-o.tr)/60e3).toFixed(3),
             errSched:sched!=null?+((sched-o.tr)/60e3).toFixed(3):null,measured:res.cov[i]})+"\n"); nPred++; np++;

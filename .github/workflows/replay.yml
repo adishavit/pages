@@ -13,6 +13,7 @@ jobs:
     timeout-minutes: 120
     outputs:
       days: ${{ steps.days.outputs.days }}
+      daysjson: ${{ steps.days.outputs.daysjson }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,6 +27,7 @@ jobs:
             D=$(python3 -c "import datetime as d;t=d.date.today();print(' '.join(str(x) for x in sorted(t-d.timedelta(k) for k in range(1,8) if (t-d.timedelta(k)).weekday() in (6,0,1,2,3))[-5:]))")
           fi
           echo "days=$D" >> "$GITHUB_OUTPUT"; echo "days: $D"
+          echo "daysjson=$(python3 -c "import json,sys;print(json.dumps(sys.argv[1:]))" $D)" >> "$GITHUB_OUTPUT"
       - working-directory: tools/replay
         run: python3 fetchraw.py ${{ steps.days.outputs.days }}
       - uses: actions/upload-artifact@v4
@@ -38,6 +40,7 @@ jobs:
       fail-fast: false
       matrix:
         line: ["484 19094", "480 7020", "19 10802"]
+        day: ${{ fromJSON(needs.fetch.outputs.daysjson) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,13 +50,13 @@ jobs:
       - working-directory: tools/replay
         run: npm install --no-audit --no-fund
       - working-directory: tools/replay
-        env: { MAXTRIPS: "16", NODE_OPTIONS: "--max-old-space-size=6000" }
+        env: { MAXTRIPS: "40", NODE_OPTIONS: "--max-old-space-size=6000" }
         run: |
           set -- ${{ matrix.line }}
-          node replay.js $1 $2 ${{ needs.fetch.outputs.days }} 2>&1 | grep -v '^    at \|Not implemented\|trace-warnings'
-          gzip -k out/$1.jsonl; echo "LINE=$1" >> "$GITHUB_ENV"
+          node replay.js $1 $2 ${{ matrix.day }} 2>&1 | grep -v '^    at \|Not implemented\|trace-warnings'
+          mv out/$1.jsonl out/$1-${{ matrix.day }}.jsonl; gzip -k out/$1-${{ matrix.day }}.jsonl; echo "TAG=$1-${{ matrix.day }}" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
-        with: { name: "out-${{ env.LINE }}", path: "tools/replay/out/*.jsonl.gz", retention-days: 30 }
+        with: { name: "out-${{ env.TAG }}", path: "tools/replay/out/*.jsonl.gz", retention-days: 30 }
   score:
     needs: replay
     if: always()
@@ -65,6 +68,8 @@ jobs:
       - working-directory: tools/replay
         run: |
           gunzip -f out/*.jsonl.gz
+          for l in 484 480 19; do cat out/$l-*.jsonl > out/$l.jsonl 2>/dev/null; rm -f out/$l-*.jsonl; done
+          python3 sanity.py | grep -v "^  worst" | head -80
           python3 score.py
           echo "SUMMARY_JSON_BEGIN"; cat summary.json; echo "SUMMARY_JSON_END"
       - uses: actions/upload-artifact@v4
