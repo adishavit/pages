@@ -6,12 +6,19 @@
 <meta name="theme-color" content="#1565c0">
 <title>Live bus tracker</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css'">
+<link rel="preload" as="font" type="font/woff2" href="fonts/inter-latin-800.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="fonts/inter-latin-600.woff2" crossorigin>
 <style>
+/* UI font: Inter (Latin) + Heebo (Hebrew), self-hosted subsets (SIL OFL); the system fonts stay as the fallback */
+@font-face{font-family:BusUI;font-weight:400;font-display:swap;src:url(fonts/inter-latin-400.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:BusUI;font-weight:400;font-display:swap;src:url(fonts/heebo-hebrew-400.woff2) format("woff2");unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
+@font-face{font-family:BusUI;font-weight:600;font-display:swap;src:url(fonts/inter-latin-600.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:BusUI;font-weight:600;font-display:swap;src:url(fonts/heebo-hebrew-600.woff2) format("woff2");unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
+@font-face{font-family:BusUI;font-weight:700;font-display:swap;src:url(fonts/inter-latin-700.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:BusUI;font-weight:700;font-display:swap;src:url(fonts/heebo-hebrew-700.woff2) format("woff2");unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
+@font-face{font-family:BusUI;font-weight:800;font-display:swap;src:url(fonts/inter-latin-800.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:BusUI;font-weight:800;font-display:swap;src:url(fonts/heebo-hebrew-800.woff2) format("woff2");unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
 :root{--ease-out:cubic-bezier(.22,1,.36,1);--ease-io:cubic-bezier(.65,0,.35,1);--bg:#fff;--fg:#1b1b1f;--mut:#6b6f76;--line:#e6e7ea;--card:#f6f7f9;--acc:#1565c0;--live:#283593;--sig:#2e7d32;--str:#4f5fc2;--old:#9aa0a6;--warn:#b26a00;--late:#c62828;--ok:#2e7d32;--sheet-shadow:0 -6px 24px rgba(0,0,0,.18)}
 @media (prefers-color-scheme:dark){:root{--bg:#17181b;--fg:#ececf0;--mut:#9aa0a6;--line:#2b2d31;--card:#202226;--acc:#64a0ff;--sheet-shadow:0 -6px 24px rgba(0,0,0,.6)}
   .invert-dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9)} .leaflet-container{background:#111}}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg);-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;font-family:BusUI,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg);-webkit-tap-highlight-color:transparent}
 #map{position:absolute;inset:0}
 /* no text selection / long-press callout on touch UI (it disturbs dragging and the lens); the debug log and inputs stay selectable */
 body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
@@ -63,7 +70,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .sdest.l{right:auto;left:0}
 .sfix{position:absolute;top:52px;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--str);z-index:3}
 .sfix.live{background:var(--live)}.sfix.old{background:var(--old)}
-.sbus{position:absolute;top:76px;transform:translateX(-50%);background:var(--str);color:#fff;border-radius:8px;padding:0 5px;font:700 11px/14px system-ui,sans-serif;white-space:nowrap;z-index:4;transition:left 1s linear;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.sbus{position:absolute;top:76px;transform:translateX(-50%);background:var(--str);color:#fff;border-radius:8px;padding:0 5px;font:700 11px/14px BusUI,system-ui,sans-serif;white-space:nowrap;z-index:4;transition:left 1s linear;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .sbus small{font-weight:400;margin-left:3px;font-size:9px;opacity:.85}
 .sbus.r2{top:92px}   /* second row when tags would overlap */
 /* pointer from each tag up to the bus's exact position on the line (line centre ~53px) */
@@ -183,7 +190,7 @@ details#diag{margin-top:16px;border-top:1px solid var(--line);padding-top:10px}
 #diag summary{font-size:14px;font-weight:600;cursor:pointer;padding:6px 0;min-height:32px}
 #dbg{font:11px/1.35 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;background:var(--card);padding:6px;border-radius:8px;max-height:50vh;overflow:auto}
 /* map markers */
-.bm{position:absolute;transform:translate(-50%,-50%);background:var(--str);color:#fff;border:2px solid #fff;border-radius:12px;padding:1px 6px 2px;font:700 13px/15px system-ui,sans-serif;text-align:center;box-shadow:0 1px 5px rgba(0,0,0,.5);white-space:nowrap}
+.bm{position:absolute;transform:translate(-50%,-50%);background:var(--str);color:#fff;border:2px solid #fff;border-radius:12px;padding:1px 6px 2px;font:700 13px/15px BusUI,system-ui,sans-serif;text-align:center;box-shadow:0 1px 5px rgba(0,0,0,.5);white-space:nowrap}
 .bm small{display:block;font-size:10px;font-weight:400;line-height:11px;opacity:.85}
 .bm.live{background:var(--live)}.bm.old{background:var(--old)}
 .bm.est{background:#fff;color:var(--str);border:2px dashed var(--str)}
@@ -307,7 +314,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v163"; window.__appStarted=true;
+const VERSION="v164"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -2022,6 +2029,7 @@ async function refresh(){
   }catch(e){failCount++;refreshErr=e.message;log("refresh failed: "+e.message);}
   finally{inFlight=false; if(genStale(g)){ log("refresh was for the old direction: dropped"); refresh(); return; } render();if(!document.hidden)schedule(pollInterval());}
 }
+if(document.fonts&&document.fonts.ready) document.fonts.ready.then(()=>{ labWc.clear(); if(lastModel) render(); });   // label widths were measured with the fallback font
 setInterval(()=>{ // ticking clocks + countdown
   if(document.hidden) return;
   renderFresh();
