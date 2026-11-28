@@ -318,7 +318,7 @@ setTimeout(function(){ if(window.__appStarted) return; var d=document.createElem
 <script>if(!window.L)document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>')</script>
 <script>
 "use strict";
-const VERSION="v178"; window.__appStarted=true;
+const VERSION="v179"; window.__appStarted=true;
 const PAGE_LOADED=Date.now();
 // ---------- debug log ----------
 const LOG=[];
@@ -570,7 +570,7 @@ function pluribusStyle(mode){
   const P=PLURIBUS[mode], cls=l=>["in",["get","class"],["literal",l]], F=["Noto Sans Regular"], FB=["Noto Sans Bold"];
   const w=(a,b,c)=>["interpolate",["exponential",1.4],["zoom"],10,a,14,b,18,c];
   const road=(id,cl,col,wd,extra={})=>({id,type:"line",source:"om","source-layer":"transportation",filter:["all",cls(cl),["!=",["get","brunnel"],"tunnel"]],layout:{"line-cap":"round","line-join":"round"},paint:{"line-color":col,"line-width":wd,...extra}});
-  const name=(id,sl,filter,size,col,font,extra={})=>({id,type:"symbol",source:"om","source-layer":sl,filter,layout:{"text-field":["get","name"],"text-font":font,"text-size":size,"text-max-width":8,"text-padding":2,...extra},paint:{"text-color":col,"text-halo-color":P.halo,"text-halo-width":1.4,"text-halo-blur":.3}});
+  const name=(id,sl,filter,size,col,font,extra={})=>{ const {minzoom,...lay}=extra; return {id,type:"symbol",source:"om","source-layer":sl,filter,...(minzoom!=null?{minzoom}:{}),layout:{"text-field":["get","name"],"text-font":font,"text-size":size,"text-max-width":8,"text-padding":2,...lay},paint:{"text-color":col,"text-halo-color":P.halo,"text-halo-width":1.4,"text-halo-blur":.3}}; };
   return {version:8,name:"Pluribus "+mode,
     glyphs:"https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
     sources:{om:{type:"vector",url:"https://tiles.openfreemap.org/planet"}},
